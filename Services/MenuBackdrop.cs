@@ -19,8 +19,16 @@ public sealed class MenuBackdrop : IDisposable
     private string _material = "";
     public bool IsActive => _mica != null || _acrylic != null;
     public bool KeepsMaterialWithoutFocus => IsActive && _configuration?.IsInputActive == true;
+    internal string Material => _material;
+    internal bool HostBackdropEnabled { get; private set; }
     public bool Apply(nint handle, string material, bool light)
     {
+        // SetTarget does not enable the HWND's host backdrop brush. Every top-level
+        // cascade window needs its own flag, including cached windows after a switch.
+        int hostBackdrop = material == "acrylic" ? 1 : 0;
+        int hostResult = NativeMethods.DwmSetWindowAttribute(handle, NativeMethods.DWMWA_USE_HOSTBACKDROPBRUSH, ref hostBackdrop, sizeof(int));
+        if (material == "acrylic" && hostResult < 0) { Dispose(); return false; }
+        HostBackdropEnabled = hostBackdrop != 0 && hostResult >= 0;
         if (IsActive && _material == material)
         {
             _configuration!.Theme = light ? SystemBackdropTheme.Light : SystemBackdropTheme.Dark;
@@ -28,6 +36,7 @@ public sealed class MenuBackdrop : IDisposable
             return true;
         }
         Dispose();
+        HostBackdropEnabled = hostBackdrop != 0 && hostResult >= 0;
         try
         {
             if (material == "mica" ? !MicaController.IsSupported() : !DesktopAcrylicController.IsSupported()) return false;
@@ -46,7 +55,7 @@ public sealed class MenuBackdrop : IDisposable
             }
             else
             {
-                _acrylic = new();
+                _acrylic = new() { Kind = DesktopAcrylicKind.Thin };
                 active = _acrylic.SetTarget(id, _target);
                 _acrylic.SetSystemBackdropConfiguration(_configuration);
             }
@@ -81,6 +90,7 @@ public sealed class MenuBackdrop : IDisposable
     {
         _mica?.Dispose(); _acrylic?.Dispose(); _target?.Dispose(); _compositor?.Dispose();
         _mica = null; _acrylic = null; _target = null; _compositor = null; _configuration = null; _material = "";
+        HostBackdropEnabled = false;
     }
     [StructLayout(LayoutKind.Sequential)] private struct DispatcherQueueOptions { public int Size, ThreadType, ApartmentType; }
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int CreateTargetCallback(nint self, nint window, [MarshalAs(UnmanagedType.Bool)] bool topmost, out nint target);

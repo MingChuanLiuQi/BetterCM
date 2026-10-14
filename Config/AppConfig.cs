@@ -1,4 +1,3 @@
-using System.Text.Json;
 namespace BetterCM.Config;
 
 public sealed class ActionPreference
@@ -52,7 +51,7 @@ public sealed class AppConfig
     public List<CustomActionItem> CustomActions { get; set; } = [];
     public HashSet<string> PinnedShellActions { get; set; } = [];
     public HashSet<string> HiddenShellActions { get; set; } = [];
-    public AppConfig Clone() => JsonSerializer.Deserialize<AppConfig>(JsonSerializer.Serialize(this))!;
+    public AppConfig Clone() => ConfigJson.Deserialize(ConfigJson.Serialize(this))!;
 }
 public sealed class ConfigStore
 {
@@ -60,7 +59,6 @@ public sealed class ConfigStore
     public string FilePath { get; }
     public AppConfig Current { get; private set; } = new();
     public string? LastError { get; private set; }
-    private static readonly JsonSerializerOptions Options = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
     public ConfigStore(string? filePath = null) => FilePath = filePath ?? Path.Combine(DataDirectory, "config.json");
     public bool Load()
     {
@@ -71,7 +69,7 @@ public sealed class ConfigStore
             {
                 try
                 {
-                    Current = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(legacy), Options) ?? new();
+                    Current = ConfigJson.Deserialize(File.ReadAllText(legacy)) ?? new();
                     Current.CustomActions.RemoveAll(x => (x.Executable is "code" or "wt.exe" or "notepad.exe") && (x.Arguments is "\"{path}\"" or "-d \"{dir}\""));
                 }
                 catch (Exception ex) { LastError = "默认配置读取失败：" + ex.Message; return false; }
@@ -80,7 +78,7 @@ public sealed class ConfigStore
         }
         try
         {
-            var next = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(FilePath), Options) ?? throw new InvalidDataException("配置为空");
+            var next = ConfigJson.Deserialize(File.ReadAllText(FilePath)) ?? throw new InvalidDataException("配置为空");
             Validate(next);
             Current = next;
             LastError = null;
@@ -95,7 +93,7 @@ public sealed class ConfigStore
         {
             Validate(next);
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(temporary, JsonSerializer.Serialize(next, Options));
+            File.WriteAllText(temporary, ConfigJson.Serialize(next));
             File.Move(temporary, FilePath, true);
             Current = next.Clone();
             LastError = null;

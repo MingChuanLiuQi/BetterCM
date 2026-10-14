@@ -37,7 +37,7 @@ public partial class MainWindow : Window
     public void RefreshSettings()
     {
         var config = _app.Config.Clone();
-        _loadedConfig = System.Text.Json.JsonSerializer.Serialize(config);
+        _loadedConfig = ConfigJson.Snapshot(config);
         _configurationConflict = false;
         ClassicOption.IsChecked = config.ClassicMenu;
         RefreshModeAvailability();
@@ -103,7 +103,7 @@ public partial class MainWindow : Window
     }
     private void Save_Click(object sender, RoutedEventArgs e)
     {
-        if (_loadedConfig != System.Text.Json.JsonSerializer.Serialize(_app.Config))
+        if (_loadedConfig != ConfigJson.Snapshot(_app.Config))
         {
             NotifyConfigurationChanged(); return;
         }
@@ -119,7 +119,7 @@ public partial class MainWindow : Window
     public void NotifyConfigurationChanged()
     {
         RefreshDiagnostics();
-        _configurationConflict = _loadedConfig != System.Text.Json.JsonSerializer.Serialize(_app.Config);
+        _configurationConflict = _loadedConfig != ConfigJson.Snapshot(_app.Config);
         if (_configurationConflict)
             SaveStatus.Text = "配置已在外部更新。未保存的编辑已保留；请点击“还原为已保存”加载最新配置后再保存。";
         SaveButton.IsEnabled = !_configurationConflict && HotkeyValidation.Text.StartsWith("格式正确", StringComparison.Ordinal);

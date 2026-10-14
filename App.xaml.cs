@@ -291,8 +291,8 @@ public partial class App : Application
             {
                 Id = config.ClassicMenu ? "native:" + item.Command : "shell:" + item.Command + ":" + item.Key, ShellKey = item.Key,
                 Title = item.Title, Group = item.Group, Verb = item.Verb,
-                Detail = item.Group.Length == 0 ? item.Title : item.Group + " · " + item.Title,
-                Glyph = "\uE8A7", Shortcut = item.Shortcut, Enabled = item.Enabled,
+                Detail = NativeSelectionCommand.RequiresExplorer(item) ? item.Title + "：打开 Windows 原生菜单后选择同一项完成确认。" : item.Group.Length == 0 ? item.Title : item.Group + " · " + item.Title,
+                Glyph = "\uE8A7", Shortcut = NativeSelectionCommand.RequiresExplorer(item) ? "系统确认" : item.Shortcut, Enabled = item.Enabled,
                 Execute = () => RunShellAsync(response.Session!, item.Command)
             }).ToList();
     }

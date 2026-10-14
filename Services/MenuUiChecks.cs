@@ -289,6 +289,7 @@ public static class MenuUiChecks
         }
         finally { menu.CloseMenu("测试结束", true); menu.Close(); ThemeService.Apply("system"); }
         await NativeUiChecks.RunAsync(Check);
+        await BackdropUiChecks.RunAsync(Check);
     }
     private static IEnumerable<MenuEntry> Leaves(IEnumerable<MenuEntry> rows) => rows.SelectMany(x => x.IsGroup ? Leaves(x.Children) : x.IsSeparator ? [] : new[] { x });
     internal static IEnumerable<DependencyObject> VisualDescendants(DependencyObject root) => Descendants(root);

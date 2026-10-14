@@ -1,4 +1,28 @@
-# 1.4.0 连续探测排队、搜索退回原位注入与多点视图命中（当前构建）
+# 1.5.0 生命周期契约与材质（当前构建）
+
+新增跨进程请求或长生命周期对象时，同时声明所有权、生效条件和作废条件。后续审查按下表核对，关闭界面与结束原生异步任务分别处理。
+
+| 对象 | 所有权 | 生效条件 | 作废/释放条件 |
+| --- | --- | --- | --- |
+| ShellBridge._current | 当前菜单会话 | Session 与连接匹配 | 下一次 open、断连、Dispose |
+| _invocations | 已预留并移交的执行连接 | InvocationReserved | SendAsync 结束；原生宿主继续排空自己的工作 |
+| GroupLoad | 延迟分组读取 | loadingGroups[token] 是同一对象且代次匹配 | 同 token 替换、ShowAt；失去悬停仅取消展示权限 |
+| NativeMenuState | 当前菜单代次 | generation 匹配 | 下一次 ShowAt Reset；不跨会话复用委托 |
+| AppearancePreview._owner | 当前预览请求 | request == owner | Restore；旧请求不能恢复新预览 |
+| ExpansionAnimator._serial | 一次展开动画 | serial 匹配 | Cancel、Play；回调后再次验证 |
+| MenuFirstFrame._serial | 一次首帧遮蔽 | serial 匹配 | Cancel、Complete；旧请求不能解除新窗口遮蔽 |
+| OptionalProbe 在飞读取 | 单一读取类型及不可变目标身份 | 同路径/类型可共享同一尚未完成的任务 | 完成后下次请求重新读取；不同路径只串行等待；取消调用方不取消底层共享读取 |
+| MenuBackdrop | 一个 HWND 的 Compositor、控制器与配置 | 目标句柄及所选材质有效 | 切换材质或关闭窗口 Dispose；纯色/无透明/高对比度禁用画刷 |
+
+所有 ContextMenuWindow（主、侧边和嵌套）都在 SetTarget 前显式设置 DWMWA_USE_HOSTBACKDROPBRUSH。亚克力统一 DesktopAcrylicKind.Thin，并保持独立的 IsInputActive；Mica、纯色和系统回退释放该支持。此 DWM 属性在本机只能设置，读取返回 E_INVALIDARG，因此检查设置 HRESULT、控制器与真实呈现，不把 getter 失败当作材质失败。依据 [DesktopAcrylicController.SetTarget](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.composition.systembackdrops.desktopacryliccontroller.settarget?view=windows-app-sdk-1.8)。
+
+短子菜单的测量包含当前 DPI 的 SM_CYMINTRACK，避免 WPF 在复用 Show 时把窗口加高而留下没有内容覆盖的底边。动画前确定最终尺寸，保持此前首帧与展开动画契约。
+
+PinToStartScreen、UnpinFromStartScreen、taskbarpin、taskbarunpin 只按根级规范动词识别。Windows 在本机拒绝普通 IContextMenu/FolderItemVerb 执行，IFolderView2 的返回值也不足以证明固定发生。产品经验证原生视图及选区后激活该视图，向其真实焦点 HWND 发送 WM_CONTEXTMENU，由用户在 Explorer 的原始菜单确认。没有进程伪装、数据库改写或模拟按键。该请求由 Explorer 持有，Shell 宿主不把它记为本进程的未完成原生任务。
+
+ConfigJson 统一保存、克隆和冲突快照的格式；快照规范化无序隐藏/固定集合，保留动作列表顺序。回滚继续保存原始配置文本，不以规范化 JSON 替换用户原文。
+
+# 1.4.0 连续探测排队、搜索退回原位注入与多点视图命中（前轮构建）
 
 OptionalProbe 保存当前在飞 Task，ReadAsync 在调用方剩余预算（2 秒）与 CancellationToken 约束下等待前一次正常读取完成再启动新读取，消除快速连续右键因前一次 5–20ms 本地读取尚未结束而直接返回 null 丢失图标或大小的问题；若前一次读取真正卡死超时，后续请求在等待预算耗尽时直接返回 default 而不启动第二个底层同步 I/O。Start(read) 仍保持零等待即时非阻塞契约。
 

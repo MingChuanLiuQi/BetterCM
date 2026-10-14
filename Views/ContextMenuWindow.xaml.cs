@@ -492,7 +492,11 @@ public partial class ContextMenuWindow : Window
                 measuredKinds.Add($"{kind.Key}:multiline={measured:F1}");
             }
         }
-        double height = Math.Min(MaxHeight, Math.Ceiling((chrome + rowsHeight + ActionsList.Padding.Top + ActionsList.Padding.Bottom) * _scale) / _scale);
+        // WPF applies the native minimum tracking height again when a cached HWND is
+        // shown. Account for it before presentation, so a one-row compact submenu
+        // cannot grow past its transparent content bitmap after Show.
+        double minimumPixels = NativeMethods.GetSystemMetricsForDpi(NativeMethods.SM_CYMINTRACK, (uint)Math.Round(_scale * 96));
+        double height = Math.Min(MaxHeight, Math.Max(minimumPixels, Math.Ceiling((chrome + rowsHeight + ActionsList.Padding.Top + ActionsList.Padding.Bottom) * _scale)) / _scale);
         LayoutDiagnostics = $"chrome={chrome:F1}, rows={rowsHeight:F1}, height={height:F1}, max={MaxHeight:F1}; " + string.Join("; ", measuredKinds);
         Surface.Height = height;
         Surface.Measure(new Size(Width, height)); Surface.Arrange(new Rect(0, 0, Width, height));

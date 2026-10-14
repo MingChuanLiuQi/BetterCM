@@ -254,7 +254,7 @@ public static class ShellHost
                             if (request.Kind == "open") { session?.Dispose(); session = new(request.Paths ?? [], (nint)request.Owner, request.Background, request.ViewPath, request.PinnedNavigation, request.DeferSubmenus); return new ShellResponse(true, Session: session.Id, Items: session.Items, Menu: session.Menu, BuildTimings: session.BuildTimings); }
                             if (request.Kind == "expand" && session != null && session.Id == request.Session)
                                 return new ShellResponse(true, Session: session.Id, Items: session.Items, Menu: request.Command < 0 ? session.CompleteMenu() : session.ExpandSubmenu(request.Command));
-                            if (request.Kind == "invoke" && session != null && session.Id == request.Session) { invoked = true; session.Invoke(request.Command); return new ShellResponse(true); }
+                            if (request.Kind == "invoke" && session != null && session.Id == request.Session) { invoked = !session.RequiresNativeConfirmation(request.Command); session.Invoke(request.Command); return new ShellResponse(true); }
                         }
                         return new ShellResponse(false, "菜单上下文已改变，请重新呼出后执行");
                     }

@@ -33,6 +33,7 @@ public partial class ContextMenuWindow
     {
         Group = _submenuId, Width = _submenu.Width, Height = _submenu.Height,
         Rows = _submenu.VisibleRows.Count, OpensLeft = _submenu._opensLeft,
+        Material = ThemeService.MenuMaterial(_submenu), HostBackdrop = ThemeService.MenuHostBackdropEnabled(_submenu),
         Regions = SubmenuRegions().Select(x => new { Handle = (long)x.Handle, x.Bounds.Left, x.Bounds.Top, x.Bounds.Right, x.Bounds.Bottom }).ToArray(), Layout = _submenu.LayoutDiagnostics,
         Child = _submenu.CascadeLayout
     };

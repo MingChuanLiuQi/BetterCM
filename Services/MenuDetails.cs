@@ -6,24 +6,30 @@ namespace BetterCM.Services;
 internal sealed class OptionalProbe<T>
 {
     private readonly object _sync = new();
-    private Task _inFlight = Task.CompletedTask;
-    internal Task<T?> Start(Func<Task<T?>> read) => ReadAsync(read, TimeSpan.Zero);
-    internal async Task<T?> ReadAsync(Func<Task<T?>> read, TimeSpan timeout, CancellationToken cancellation = default)
+    private Task<T?>? _inFlight;
+    private string? _identity;
+    // Start only when idle; never queue behind an existing read. The returned task
+    // still represents the newly accepted read, rather than its scheduling alone.
+    internal Task<T?> TryStartNoWait(Func<Task<T?>> read) => ReadAsync(read, TimeSpan.Zero);
+    internal async Task<T?> ReadAsync(Func<Task<T?>> read, TimeSpan timeout, CancellationToken cancellation = default, string? identity = null)
     {
         var watch = System.Diagnostics.Stopwatch.StartNew();
         while (true)
         {
             cancellation.ThrowIfCancellationRequested();
-            Task prior;
+            Task<T?> prior;
             Task<T?>? current = null;
+            bool share;
             lock (_sync)
             {
-                if (_inFlight.IsCompleted)
+                if (_inFlight == null || _inFlight.IsCompleted)
                 {
                     current = RunAsync(read);
                     _inFlight = current;
+                    _identity = identity;
                 }
                 prior = _inFlight;
+                share = identity != null && string.Equals(identity, _identity, StringComparison.OrdinalIgnoreCase);
             }
             if (current != null)
             {
@@ -35,7 +41,11 @@ internal sealed class OptionalProbe<T>
             }
             var wait = timeout - watch.Elapsed;
             if (wait <= TimeSpan.Zero) return default;
-            try { await prior.WaitAsync(wait, cancellation).ConfigureAwait(false); }
+            try
+            {
+                var result = await prior.WaitAsync(wait, cancellation).ConfigureAwait(false);
+                if (share) return result; // Same target only; different files need their own read.
+            }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
             catch { return default; }
         }
@@ -51,9 +61,9 @@ internal static class MenuDetails
     private static readonly OptionalProbe<ImageSource> Icons = new();
     private static readonly OptionalProbe<long?> Sizes = new();
     internal static Task<ImageSource?> IconAsync(string path, bool directory, TimeSpan? timeout = null, CancellationToken cancellation = default)
-        => Icons.ReadAsync(() => IconCache.GetAsync(path, directory), timeout ?? TimeSpan.FromSeconds(2), cancellation);
+        => Icons.ReadAsync(() => IconCache.GetAsync(path, directory), timeout ?? TimeSpan.FromSeconds(2), cancellation, IconCache.KeyForPath(path, directory));
     internal static Task<long?> SizeAsync(string path, bool file, TimeSpan? timeout = null, CancellationToken cancellation = default)
-        => !file ? Task.FromResult<long?>(null) : Sizes.ReadAsync(() => Task.Run<long?>(() => new FileInfo(path).Length), timeout ?? TimeSpan.FromSeconds(2), cancellation);
+        => !file ? Task.FromResult<long?>(null) : Sizes.ReadAsync(() => Task.Run<long?>(() => new FileInfo(path).Length), timeout ?? TimeSpan.FromSeconds(2), cancellation, IconCache.KeyForPath(path, false));
     internal static async Task LoadAsync(Task<ImageSource?> icon, Task<long?> size, Action<ImageSource?, long?> publish, CancellationToken cancellation, TimeSpan? timeout = null)
     {
         var deadline = timeout ?? TimeSpan.FromSeconds(2);

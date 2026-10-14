@@ -97,7 +97,7 @@
                   <ColumnDefinition Width="*" />
                   <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Button x:Name="EntryButton" Style="{StaticResource MenuButton}" IsTabStop="False" Tag="{Binding}" IsEnabled="{Binding Enabled}" Click="Action_Click" MouseEnter="Action_Enter" MouseLeave="Action_Leave" ToolTip="{Binding Detail}" AutomationProperties.Name="{Binding Title}">
+                <Button x:Name="EntryButton" Style="{StaticResource MenuButton}" IsTabStop="False" Tag="{Binding}" IsEnabled="{Binding Enabled}" Click="Action_Click" MouseEnter="Action_Enter" MouseLeave="Action_Leave" ToolTip="{Binding Detail}" AutomationProperties.Name="{Binding Title}" AutomationProperties.HelpText="{Binding Detail}">
                   <Grid>
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="26" />

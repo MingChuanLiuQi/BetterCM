@@ -14,7 +14,9 @@ public static class CascadeInteractionChecks
     {
         var report = Path.GetFullPath(output);
         Directory.CreateDirectory(Path.GetDirectoryName(report)!);
-        ThemeService.Apply("dark");
+        string material = Environment.GetEnvironmentVariable("BETTERCM_QA_MATERIAL") ?? "mica";
+        if (material is not ("mica" or "acrylic" or "solid")) throw new ArgumentException("无效的测试材质");
+        ThemeService.Apply("dark", material);
         using var input = new InputService(); input.Apply("Ctrl+Alt+F23", false);
         var menu = new ContextMenuWindow { ShowInTaskbar = true };
         var host = new Window { Title = AppInfo.DisplayName + " · 侧边交互回归", Width = 560, Height = 300, WindowStartupLocation = WindowStartupLocation.CenterScreen };
@@ -46,7 +48,7 @@ public static class CascadeInteractionChecks
                 preparation.IsEnabled = true; status.Text = "侧边动作已记录。点击第 2 个按钮，然后再次点击它取消准备中的菜单。";
                 return Task.CompletedTask;
             } }];
-            menu.ShowAt(bounds.Right + 12, bounds.Top, new() { Source = "输入回归", CurrentDirectory = Path.GetDirectoryName(report)! }, new() { ShowMoreItems = false, CompactMenu = true }, [], [], [], shell: actions);
+            menu.ShowAt(bounds.Right + 12, bounds.Top, new() { Source = "输入回归", CurrentDirectory = Path.GetDirectoryName(report)! }, new() { ShowMoreItems = false, CompactMenu = true, Material = material }, [], [], [], shell: actions);
         };
         preparation.Click += async (_, _) =>
         {

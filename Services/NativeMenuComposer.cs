@@ -31,7 +31,7 @@ public static class NativeMenuComposer
                     DeferredSubmenu = node.DeferredSubmenu,
                     GroupEnabled = enabled, Checked = node.Checked, IsDefault = node.IsDefault, IsNativeLayout = true,
                     Glyph = node.Checked ? "\uE73E" : children != null ? "\uE8B7" : action?.Glyph ?? "\uE8A7", Hint = node.Shortcut.Length > 0 ? node.Shortcut : action?.Shortcut ?? "",
-                    Detail = fullTitle, Mnemonic = node.Mnemonic
+                    Detail = action?.Detail.Length > 0 ? action.Detail : fullTitle, Mnemonic = node.Mnemonic
                 });
             }
             return rows;

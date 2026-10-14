@@ -1,10 +1,10 @@
-# BetterCM 1.3.0
+# BetterCM 1.5.0
 
-BetterCM 为 Windows 11 的经典右键菜单提供现代外观。1.3.0 修复多标签页视图和选区绑定、准备期预览外观恢复、延迟搜索即时反馈及原生粘贴项的位置；图标与大小独立有界加载，日志限制容量并轮转。保留原生后端、展开闪烁修复及布局优化。验证见 QA-1.3.0.md，本轮审查取舍见 REVIEW-1.3.0.md。
+BetterCM 为 Windows 11 的经典右键菜单提供现代外观。1.5.0 修复各级菜单的亚克力背景初始化，统一使用系统 Thin Acrylic，修复紧凑单行子菜单复用后的底边空隙。固定到开始、任务栏及对应取消固定入口交回真实 Windows 菜单确认，解决拒绝访问及无效果返回。按同一目标复用在飞图标/大小读取，统一配置快照，并开始用本地 Git 记录版本。验证见 QA-1.5.0.md，审查取舍见 REVIEW-1.5.0.md。
 
 ## 安装与使用
 
-运行项目根目录的 **BetterCM-1.3.0-Setup-x64.exe**。安装包包含 .NET/WPF 和 Windows App SDK 材质组件，无需另装运行时；可安装到原目录升级，沿用用户配置。默认目录是当前用户的 `%LOCALAPPDATA%\Programs\BetterCM`，不需要管理员权限。安装时可选择登录自启或桌面快捷方式，默认均不勾选。
+运行项目根目录的 **BetterCM-1.5.0-Setup-x64.exe**。安装包包含 .NET/WPF 和 Windows App SDK 材质组件，无需另装运行时；可安装到原目录升级，沿用用户配置。默认目录是当前用户的 `%LOCALAPPDATA%\Programs\BetterCM`，不需要管理员权限。安装时可选择登录自启或桌面快捷方式，默认均不勾选。
 
 - 普通右键接管资源管理器文件视图、导航栏和桌面；开始按下前按住 Shift，可以使用原生菜单或原生右键拖动。
 - 默认“忠实呈现经典右键菜单”保持 Shell 返回的顺序、分隔线、子菜单、禁用、勾选、默认动作及访问键。只改变呈现，不重新合成 Git、打开方式、路径等分组，不自动插入内置或自定义命令。
@@ -14,13 +14,15 @@ BetterCM 为 Windows 11 的经典右键菜单提供现代外观。1.3.0 修复�
 - 剪切、复制、粘贴、删除和属性调用当前 Shell 会话中的命令，保留原生状态、确认和对话框。重命名及新建后的名称编辑绑定原来的资源管理器视图，不使用命令行或模拟 F2。
 - 多标签页按当前文件视图读取目录和选区；切换到另一个标签，即使目录相同，也拒绝执行旧菜单。
 - 固定导航项目使用当前 Home 项目及 `System.Home.IsPinned` 状态，不依赖 UIA 是否包含“已固定”字样，也不缓存固定顺序。
-- 普通根菜单 Ctrl+F 展开并定位搜索；紧凑模式及侧边子菜单不进入隐藏搜索框。向下键进入可执行结果；Enter 执行默认或选中动作，左右键进入或返回子菜单，Esc 关闭。经典访问键使用 Shell 原来的字母；菜单行及材质父窗口禁用 IME 组合输入，独立搜索内容窗口仍启用 IME；F5 刷新绑定的原生背景视图。Ctrl+C/X/V、F2、Delete、Alt+Enter 绑定原生能力，打印数字快捷键按实际数字键匹配。
+- 普通根菜单 Ctrl+F 展开并定位搜索；紧凑模式及侧边子菜单不进入隐藏搜索框。向下键进入可执行结果；Enter 执行选中项或系统默认项（无默认项时不执行），左右键进入或返回子菜单，Esc 关闭。经典访问键使用 Shell 原来的字母；菜单行及材质父窗口禁用 IME 组合输入，独立搜索内容窗口仍启用 IME；F5 刷新绑定的原生背景视图。Ctrl+C/X/V、F2、Delete、Alt+Enter 绑定原生能力，打印数字快捷键按实际数字键匹配。
 - 外部输入、前台切换、窗口移动或最小化关闭整个菜单链，并将外部操作继续传给原窗口。Shell 读取期间的新输入会取消旧准备，不补发延迟的原生菜单。
 - 设置可选择系统/深色/浅色、Mica/Acrylic/纯色，以及主菜单和侧边子菜单的动效。动画终点不重新移除视觉时钟或重建材质，只播放一套内容动画。
 - 默认呼出热键为 Alt+X，备用为 Ctrl+Shift+X；设置显示实际注册结果，格式错误时即时提示。还原为已保存会取消未保存编辑和预览。预览准备期间被外部输入取消也立即恢复已保存外观；搜索先过滤已有项目，再补全慢速子菜单。
 - 关闭设置后继续驻留托盘，左键打开设置，托盘菜单可预览、暂停接管或退出。登录自启使用 `--background`；再次运行打开已有设置，不创建第二个常驻实例。
 
 支持 Windows 11 x64。ARM64 尚未发布验证。
+
+固定类入口标注“系统确认”：点击后在弹出的 Windows 菜单选择相同项，操作由 Explorer 完成。取消该菜单不改变固定状态；这类入口暂不支持跳过系统确认的一键固定。
 
 ## 保留的增强设置
 
@@ -48,9 +50,9 @@ verify.ps1 执行警告视为错误的构建、无界面 xUnit、自带运行时
 
 ~~~powershell
 .\artifacts\publish\win-x64\BetterCM.exe --self-test .\artifacts\qa\manual-self-test.json
-.\artifacts\publish\win-x64\BetterCM.exe --stress-test .\artifacts\qa\stress-1.3.0.json
-.\artifacts\publish\win-x64\BetterCM.exe --input-check .\artifacts\qa\input-1.3.0.json
-.\artifacts\publish\win-x64\BetterCM.exe --cascade-input-check .\artifacts\qa\cascade-1.3.0.json
+.\artifacts\publish\win-x64\BetterCM.exe --stress-test .\artifacts\qa\stress-1.5.0.json
+.\artifacts\publish\win-x64\BetterCM.exe --input-check .\artifacts\qa\input-1.5.0.json
+.\artifacts\publish\win-x64\BetterCM.exe --cascade-input-check .\artifacts\qa\cascade-1.5.0.json
 ~~~
 
 自检使用新建的临时夹具进行真实原生复制、移动及无副作用的视图刷新，检查回收站命令但不清空用户回收站。压力检查使用 40 秒假命令及卡住捕获夹具。两种输入检查需要按界面提示操作，只调用记录委托。
@@ -72,4 +74,4 @@ verify.ps1 执行警告视为错误的构建、无界面 xUnit、自带运行时
 
 1.0.1 布局与性能迭代的历史备份为 Backups\BetterCM-1.0.1-before-layout-perf-20261013-192047.zip，12584 文件逐一校验；同目录保存旧安装包。该历史迭代按用户要求保留 1.0.1 版本号，用 SHA256 区分构建。
 
-详见 [更新记录](CHANGELOG.md)、[架构](ARCHITECTURE.md)、[当前验证记录](QA-1.3.0.md)、[本轮审查处理记录](REVIEW-1.3.0.md) 和 [交接](HANDOFF-1.3.0.md)。
+详见 [更新记录](CHANGELOG.md)、[架构](ARCHITECTURE.md)、[当前验证记录](QA-1.5.0.md)、[本轮审查处理记录](REVIEW-1.5.0.md) 和 [交接](HANDOFF-1.5.0.md)。

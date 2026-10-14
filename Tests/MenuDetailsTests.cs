@@ -5,6 +5,30 @@ namespace BetterCM.Tests;
 
 public sealed class MenuDetailsTests
 {
+    [Fact] public async Task SameTargetSharesPendingReadButCompletedResultsAreNotCached()
+    {
+        var probe = new OptionalProbe<string>(); var pending = new TaskCompletionSource<string?>(); int reads = 0;
+        var first = probe.ReadAsync(() => { reads++; return pending.Task; }, TimeSpan.FromSeconds(1), identity: "file:A");
+        var follower = probe.ReadAsync(() => { reads++; return Task.FromResult<string?>("duplicate"); }, TimeSpan.FromSeconds(1), identity: "file:a");
+        pending.SetResult("shared"); Assert.Equal("shared", await first); Assert.Equal("shared", await follower); Assert.Equal(1, reads);
+        Assert.Equal("fresh", await probe.ReadAsync(() => Task.FromResult<string?>("fresh"), TimeSpan.FromSeconds(1), identity: "file:A"));
+    }
+    [Fact] public async Task DifferentTargetsNeverShareMetadata()
+    {
+        var probe = new OptionalProbe<string>(); var pending = new TaskCompletionSource<string?>(); int reads = 0;
+        var first = probe.ReadAsync(() => { reads++; return pending.Task; }, TimeSpan.FromSeconds(1), identity: "file:A");
+        var second = probe.ReadAsync(() => { reads++; return Task.FromResult<string?>("B"); }, TimeSpan.FromSeconds(1), identity: "file:B");
+        pending.SetResult("A"); Assert.Equal("A", await first); Assert.Equal("B", await second); Assert.Equal(2, reads);
+    }
+    [Fact] public async Task CancellingFollowerDoesNotCancelSharedNativeRead()
+    {
+        var probe = new OptionalProbe<string>(); var pending = new TaskCompletionSource<string?>();
+        var first = probe.ReadAsync(() => pending.Task, TimeSpan.FromSeconds(1), identity: "A");
+        using var cancellation = new CancellationTokenSource();
+        var follower = probe.ReadAsync(() => Task.FromResult<string?>("wrong"), TimeSpan.FromSeconds(1), cancellation.Token, "A");
+        cancellation.Cancel(); await Assert.ThrowsAnyAsync<OperationCanceledException>(() => follower);
+        pending.SetResult("correct"); Assert.Equal("correct", await first);
+    }
     [Fact] public async Task SizeIsPublishedWhileIconStillPendingAndSurvivesIconTimeout()
     {
         var icon = new TaskCompletionSource<ImageSource?>(); var first = new TaskCompletionSource<long?>();
@@ -28,10 +52,10 @@ public sealed class MenuDetailsTests
     [Fact] public async Task BlockedProbeDoesNotAccumulateReadsAndRecoversAfterCompletion()
     {
         var probe = new OptionalProbe<string>(); var pending = new TaskCompletionSource<string?>(); int reads = 0;
-        var reading = probe.Start(() => { reads++; return pending.Task; });
-        for (int i = 0; i < 50; i++) Assert.Null(await probe.Start(() => { reads++; return Task.FromResult<string?>("wrong"); }));
+        var reading = probe.TryStartNoWait(() => { reads++; return pending.Task; });
+        for (int i = 0; i < 50; i++) Assert.Null(await probe.TryStartNoWait(() => { reads++; return Task.FromResult<string?>("wrong"); }));
         Assert.Equal(1, reads); pending.SetResult("first"); Assert.Equal("first", await reading);
-        Assert.Equal("next", await probe.Start(() => Task.FromResult<string?>("next")));
+        Assert.Equal("next", await probe.TryStartNoWait(() => Task.FromResult<string?>("next")));
     }
     [Fact] public async Task FastConsecutiveReadWaitsForInFlightProbeInsteadOfDroppingResult()
     {

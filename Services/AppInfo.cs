@@ -3,6 +3,7 @@ namespace BetterCM.Services;
 
 public static class AppInfo
 {
-    public static string Version { get; } = (typeof(AppInfo).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown").Split('+')[0];
+    public static string Build { get; } = typeof(AppInfo).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
+    public static string Version { get; } = Build.Split('+')[0];
     public static string DisplayName => "BetterCM " + Version;
 }

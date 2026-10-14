@@ -12,6 +12,8 @@ public static class ThemeService
     private static bool _light, _useMaterial, _highContrast;
     private static readonly ConditionalWeakTable<Window, MenuBackdrop> MenuBackdrops = new();
     public static bool HasStableMenuBackdrop(Window window) => MenuBackdrops.TryGetValue(window, out var backdrop) && backdrop.KeepsMaterialWithoutFocus;
+    internal static string MenuMaterial(Window window) => MenuBackdrops.TryGetValue(window, out var backdrop) ? backdrop.Material : "";
+    internal static bool MenuHostBackdropEnabled(Window window) => MenuBackdrops.TryGetValue(window, out var backdrop) && backdrop.HostBackdropEnabled;
     public static string Diagnostics => $"材质：{_material}；系统材质：{(_useMaterial ? "可用" : "纯色回退")}；Windows build：{Environment.OSVersion.Version.Build}";
     public static void Apply(string mode, string material = "mica")
     {
@@ -85,7 +87,13 @@ public static class ThemeService
             int disableNativeTransitions = 1;
             menuWindow.NativeTransitionResult = NativeMethods.DwmSetWindowAttribute(handle, NativeMethods.DWMWA_TRANSITIONS_FORCEDISABLED, ref disableNativeTransitions, sizeof(int));
             var controller = MenuBackdrops.GetOrCreateValue(window);
-            if (_useMaterial) controlled = controller.Apply(handle, _material, _light); else controller.Dispose();
+            if (_useMaterial) controlled = controller.Apply(handle, _material, _light);
+            else
+            {
+                controller.Dispose();
+                int disabled = 0;
+                NativeMethods.DwmSetWindowAttribute(handle, NativeMethods.DWMWA_USE_HOSTBACKDROPBRUSH, ref disabled, sizeof(int));
+            }
         }
         int backdrop = _useMaterial && !controlled ? (_material == "acrylic" ? NativeMethods.DWMSBT_TRANSIENTWINDOW : NativeMethods.DWMSBT_TABBEDWINDOW) : NativeMethods.DWMSBT_NONE;
         int result = NativeMethods.DwmSetWindowAttribute(handle, NativeMethods.DWMWA_SYSTEMBACKDROP_TYPE, ref backdrop, sizeof(int)); // DWMWA_SYSTEMBACKDROP_TYPE

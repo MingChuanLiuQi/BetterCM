@@ -5,6 +5,15 @@ using Xunit;
 namespace BetterCM.Tests;
 public class SettingsPersistenceTests
 {
+    [Fact] public void SnapshotIsStableAcrossClonePersistenceAndSetInsertionOrder()
+    {
+        var config = new AppConfig { PinnedShellActions = ["z", "a"], HiddenShellActions = ["b", "a"], Material = "acrylic" };
+        var equivalent = config.Clone(); equivalent.PinnedShellActions = ["a", "z"]; equivalent.HiddenShellActions = ["a", "b"];
+        Assert.Equal(ConfigJson.Snapshot(config), ConfigJson.Snapshot(equivalent));
+        Assert.Equal(ConfigJson.Snapshot(config), ConfigJson.Snapshot(ConfigJson.Deserialize(ConfigJson.Serialize(config))!));
+        equivalent.Material = "mica"; Assert.NotEqual(ConfigJson.Snapshot(config), ConfigJson.Snapshot(equivalent));
+        Assert.Equal("dark", ConfigJson.Deserialize("{\"theme\":\"dark\"}")!.Theme);
+    }
     [Fact] public void StartupFailureRestoresExactConfigTextAndOriginalStartupValue()
     {
         string root = Path.Combine(Path.GetTempPath(), "BetterCM-settings-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);

@@ -90,7 +90,7 @@ public static class SelfTests
         }
         catch (Exception ex) { Check("UI/Shell 检查异常", false, ex.ToString()); }
         bool passed = results.All(x => x.Passed);
-        await File.WriteAllTextAsync(reportPath, JsonSerializer.Serialize(new { Version = AppInfo.Version, Executable = Environment.ProcessPath, Time = DateTimeOffset.Now, Passed = passed, Failures = results.Count(x => !x.Passed), Results = results }, new JsonSerializerOptions { WriteIndented = true }));
+        await File.WriteAllTextAsync(reportPath, JsonSerializer.Serialize(new { Version = AppInfo.Version, Build = AppInfo.Build, Environment = "InteractiveWindowsDesktop; Explorer; Clipboard; InstalledShellExtensions", Executable = Environment.ProcessPath, Time = DateTimeOffset.Now, Passed = passed, Failures = results.Count(x => !x.Passed), Results = results }, new JsonSerializerOptions { WriteIndented = true }));
         return passed;
     }
 }

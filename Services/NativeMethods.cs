@@ -6,11 +6,12 @@ public static class NativeMethods
 {
     public const int WH_MOUSE_LL = 14, GA_ROOT = 2, GWL_STYLE = -16;
     public const int WM_SETFOCUS = 0x0007;
+    public const uint WM_CONTEXTMENU = 0x007B;
     public const int DWMWA_CLOAK = 13, DWMWA_CLOAKED = 14;
     [DllImport("dwmapi.dll")] public static extern int DwmFlush();
     [DllImport("shell32.dll")] public static extern void SHChangeNotify(uint eventId, uint flags, nint first, nint second);
     [DllImport("user32.dll")] public static extern nint SetFocus(nint window);
-    public const int DWMWA_TRANSITIONS_FORCEDISABLED = 3, DWMWA_USE_IMMERSIVE_DARK_MODE = 20, DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWA_SYSTEMBACKDROP_TYPE = 38;
+    public const int DWMWA_TRANSITIONS_FORCEDISABLED = 3, DWMWA_USE_HOSTBACKDROPBRUSH = 17, DWMWA_USE_IMMERSIVE_DARK_MODE = 20, DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWA_SYSTEMBACKDROP_TYPE = 38;
     public const int DWMWCP_ROUND = 2, DWMSBT_NONE = 1, DWMSBT_TRANSIENTWINDOW = 3, DWMSBT_TABBEDWINDOW = 4;
     public const int DQTYPE_THREAD_CURRENT = 2, DQTAT_COM_STA = 2;
     public const long WS_SYSMENU = 0x00080000;
@@ -76,6 +77,8 @@ public static class NativeMethods
     [DllImport("user32.dll")] public static extern bool GetGUIThreadInfo(uint thread, ref GUITHREADINFO info);
     [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int key);
     [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
+    public const int SM_CYMINTRACK = 35;
+    [DllImport("user32.dll")] public static extern int GetSystemMetricsForDpi(int index, uint dpi);
     [DllImport("user32.dll", SetLastError = true)] public static extern bool RegisterHotKey(nint hwnd, int id, uint modifiers, uint key);
     [DllImport("user32.dll")] public static extern bool UnregisterHotKey(nint hwnd, int id);
     [DllImport("user32.dll", SetLastError = true)] public static extern nint SetWindowsHookEx(int id, HookProc callback, nint module, uint thread);
