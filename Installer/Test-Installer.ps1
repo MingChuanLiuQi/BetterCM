@@ -1,0 +1,110 @@
+param([string]$SetupPath, [switch]$Isolated)
+$ErrorActionPreference = 'Stop'
+$projectRoot = Split-Path $PSScriptRoot
+[xml]$project = Get-Content -LiteralPath (Join-Path $projectRoot 'BetterCM.csproj') -Raw
+$version = [string]$project.Project.PropertyGroup.Version
+$fileVersion = $version + '.0'
+if (-not $SetupPath) { $SetupPath = if ($Isolated) { Join-Path $projectRoot ('artifacts\qa\BetterCM-' + $version + '-QA-Setup-x64.exe') } else { Join-Path $projectRoot ('BetterCM-' + $version + '-Setup-x64.exe') } }
+$qaFolder = Join-Path $projectRoot 'artifacts\qa'
+$installPath = [System.IO.Path]::GetFullPath((Join-Path $projectRoot ('artifacts\install-smoke-' + $version)))
+$artifactRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts')) + [System.IO.Path]::DirectorySeparatorChar
+if (-not $installPath.StartsWith($artifactRoot, [System.StringComparison]::OrdinalIgnoreCase)) { throw 'Test installation must stay inside project artifacts.' }
+$uninstallRegistry = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{3497A457-D1C1-4D4C-A10A-64D7B32EC101}_is1'
+if ($Isolated) { $uninstallRegistry = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7E8D5579-A731-4323-8AD8-61AA89407AC2}_is1' }
+$startupName = if ($Isolated) { 'BetterCM.QA' } else { 'BetterCM' }
+$existingInstall = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($uninstallRegistry)
+if ($existingInstall) { $existingInstall.Dispose(); throw 'An existing BetterCM installation is registered; smoke test will not replace it.' }
+if ($Isolated -and [System.IO.Path]::GetFileName($SetupPath) -notlike '*-QA-Setup-x64.exe') { throw 'Isolated checks require the TestBuild installer.' }
+if (-not $Isolated -and (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Programs\BetterCM\BetterCM.exe'))) { throw 'Existing installed files detected. Use a TestBuild installer and -Isolated.' }
+if (Test-Path -LiteralPath $installPath) { throw 'Smoke directory already exists; inspect it before reusing.' }
+New-Item -ItemType Directory -Path $qaFolder -Force | Out-Null
+$startupRegistry = 'Software\Microsoft\Windows\CurrentVersion\Run'
+$startupKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($startupRegistry)
+$previousStartup = $startupKey.GetValue($startupName)
+$previousKind = if ($null -ne $previousStartup) { $startupKey.GetValueKind($startupName) } else { $null }
+$startupKey.Dispose()
+$realStartupKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($startupRegistry)
+$realStartupBefore = $realStartupKey.GetValue('BetterCM')
+$realStartupKey.Dispose()
+$userConfig = Join-Path $env:LOCALAPPDATA 'BetterCM\config.json'
+$configHashBefore = if (Test-Path -LiteralPath $userConfig) { (Get-FileHash -LiteralPath $userConfig).Hash } else { $null }
+$results = [System.Collections.Generic.List[object]]::new()
+$testAppData = Join-Path $qaFolder 'installed-user-data'
+function Check([string]$Name, [bool]$Passed) {
+    $results.Add([pscustomobject]@{Name=$Name;Passed=$Passed})
+    if (-not $Passed) { throw ('Check failed: ' + $Name) }
+}
+function Run-Checked([string]$Executable, [string[]]$Arguments, [int]$Timeout = 60000, [bool]$Isolate = $false) {
+    $processInfo = [System.Diagnostics.ProcessStartInfo]::new($Executable)
+    $processInfo.UseShellExecute = $false
+    $processInfo.CreateNoWindow = $true
+    foreach ($argument in $Arguments) { $processInfo.ArgumentList.Add($argument) }
+    if ($Isolate) { $processInfo.Environment['BETTERCM_DATA_DIR'] = $testAppData; $processInfo.Environment['DOTNET_ROOT'] = (Join-Path $qaFolder 'no-global-dotnet'); $processInfo.Environment['DOTNET_MULTILEVEL_LOOKUP'] = '0' }
+    $process = [System.Diagnostics.Process]::Start($processInfo)
+    if (-not $process.WaitForExit($Timeout)) { $process.Kill(); throw ('Process timed out: ' + [System.IO.Path]::GetFileName($Executable)) }
+    if ($process.ExitCode -ne 0) { throw ('Process failed: ' + [System.IO.Path]::GetFileName($Executable) + ', exit ' + $process.ExitCode) }
+}
+$failure = $null
+try {
+    Run-Checked $SetupPath @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR=' + $installPath),'/TASKS=autostart',('/LOG=' + (Join-Path $qaFolder 'install-smoke.log')))
+    $installedExe = Join-Path $installPath 'BetterCM.exe'
+    Check ('安装可执行文件和 ' + $version + ' 版本') ((Test-Path -LiteralPath $installedExe) -and (Get-Item -LiteralPath $installedExe).VersionInfo.FileVersion -eq $fileVersion)
+    Check '安装包含 .NET、WPF 与系统材质运行组件' ((Test-Path -LiteralPath (Join-Path $installPath 'coreclr.dll')) -and (Test-Path -LiteralPath (Join-Path $installPath 'PresentationFramework.dll')) -and (Test-Path -LiteralPath (Join-Path $installPath 'dwmcorei.dll')) -and (Test-Path -LiteralPath (Join-Path $installPath 'Microsoft.UI.Composition.OSSupport.dll')) -and (Test-Path -LiteralPath (Join-Path $installPath 'Microsoft.InteractiveExperiences.Projection.dll')))
+    Check '运行时和安装语言许可说明已随包安装' ((Test-Path -LiteralPath (Join-Path $installPath 'DotNet-LICENSE.TXT')) -and (Test-Path -LiteralPath (Join-Path $installPath 'WindowsDesktop-LICENSE')) -and (Test-Path -LiteralPath (Join-Path $installPath 'THIRD-PARTY-NOTICES.md')))
+    $publishPath = Join-Path $projectRoot 'artifacts\publish\win-x64'
+    $payloadMatches = $true
+    foreach ($file in @(Get-ChildItem -LiteralPath $publishPath -File -Recurse)) {
+        $relative = [System.IO.Path]::GetRelativePath($publishPath, $file.FullName)
+        $destination = Join-Path $installPath $relative
+        if (-not (Test-Path -LiteralPath $destination) -or (Get-FileHash -LiteralPath $file.FullName).Hash -ne (Get-FileHash -LiteralPath $destination).Hash) { $payloadMatches = $false; break }
+    }
+    Check '安装的全部发布文件 SHA256 一致' $payloadMatches
+    $startupKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($startupRegistry)
+    Check '启动项为带引号的安装路径及后台参数' ($startupKey.GetValue($startupName) -eq ('"' + $installedExe + '" --background'))
+    $startupKey.Dispose()
+    $installedReport = Join-Path $qaFolder 'installed-tests.json'
+    Run-Checked $installedExe @('--self-test', $installedReport) 45000 $true
+    $installedResults = Get-Content -LiteralPath $installedReport -Raw | ConvertFrom-Json
+    $publishedResults = Get-Content -LiteralPath (Join-Path $qaFolder 'published-tests.json') -Raw | ConvertFrom-Json
+    Check ('安装目录可独立运行且 ' + $publishedResults.Results.Count + ' 项自检通过') ($installedResults.Passed -and $installedResults.Version -eq $version -and $publishedResults.Passed -and $publishedResults.Version -eq $version -and $installedResults.Results.Count -eq $publishedResults.Results.Count -and $installedResults.Results.Count -ge 60)
+    $backgroundInfo = [System.Diagnostics.ProcessStartInfo]::new($installedExe)
+    $backgroundInfo.UseShellExecute = $false
+    $backgroundInfo.CreateNoWindow = $true
+    $backgroundInfo.ArgumentList.Add('--background')
+    $backgroundInfo.Environment['BETTERCM_DATA_DIR'] = $testAppData
+    $background = [System.Diagnostics.Process]::Start($backgroundInfo)
+    Start-Sleep -Seconds 2
+    Check '后台启动进程持续运行并初始化用户配置' (-not $background.HasExited -and (Test-Path -LiteralPath (Join-Path $testAppData 'config.json')))
+    Run-Checked $installedExe @('--background') 10000 $true
+    # The UI process now starts isolated helpers at startup. Count only UI instances.
+    $instances = @(Get-CimInstance Win32_Process -Filter "Name='BetterCM.exe'" | Where-Object { $_.ExecutablePath -eq $installedExe -and $_.CommandLine -notmatch '--(?:shell|context)(?:-test)?-host' })
+    Check '重复启动保持单个 UI 实例，允许独立辅助宿主' ($instances.Count -eq 1 -and $instances[0].ProcessId -eq $background.Id)
+    Run-Checked $installedExe @('--shutdown') 10000 $true
+    Check '退出信号结束后台进程' ($background.WaitForExit(5000))
+} catch { $failure = $_.Exception.Message }
+finally {
+    if (Test-Path -LiteralPath (Join-Path $installPath 'BetterCM.exe')) {
+        try { Run-Checked (Join-Path $installPath 'BetterCM.exe') @('--shutdown') 10000 $true } catch { $failure = ($failure + '; shutdown: ' + $_.Exception.Message) }
+    }
+    $uninstaller = Join-Path $installPath 'unins000.exe'
+    if (Test-Path -LiteralPath $uninstaller) {
+        try { Run-Checked $uninstaller @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG=' + (Join-Path $qaFolder 'uninstall-smoke.log'))) } catch { $failure = ($failure + '; uninstall: ' + $_.Exception.Message) }
+    }
+    $startupKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($startupRegistry)
+    $results.Add([pscustomobject]@{Name='卸载清除 BetterCM 测试启动项';Passed=($null -eq $startupKey.GetValue($startupName))})
+    if ($null -eq $previousStartup) { $startupKey.DeleteValue($startupName, $false) } else { $startupKey.SetValue($startupName, $previousStartup, $previousKind) }
+    $startupKey.Dispose()
+    $realStartupKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($startupRegistry)
+    $results.Add([pscustomobject]@{Name='原有 BetterCM 启动项保持不变';Passed=($realStartupBefore -eq $realStartupKey.GetValue('BetterCM'))})
+    $realStartupKey.Dispose()
+    $uninstallKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($uninstallRegistry)
+    $results.Add([pscustomobject]@{Name='卸载移除程序和卸载注册项';Passed=(-not (Test-Path -LiteralPath (Join-Path $installPath 'BetterCM.exe')) -and $null -eq $uninstallKey)})
+    if ($uninstallKey) { $uninstallKey.Dispose() }
+    $configHashAfter = if (Test-Path -LiteralPath $userConfig) { (Get-FileHash -LiteralPath $userConfig).Hash } else { $null }
+    $results.Add([pscustomobject]@{Name='原有用户配置保持不变';Passed=($configHashBefore -eq $configHashAfter)})
+    $finalSetupPath = Join-Path $projectRoot ('BetterCM-' + $version + '-Setup-x64.exe')
+    $report = [pscustomobject]@{Version=$version;Time=[DateTimeOffset]::Now;IsolatedInstallerIdentity=[bool]$Isolated;SetupSHA256=(Get-FileHash -LiteralPath $SetupPath -Algorithm SHA256).Hash;FinalSetupSHA256=(Get-FileHash -LiteralPath $finalSetupPath -Algorithm SHA256).Hash;Passed=($null -eq $failure -and @($results | Where-Object { -not $_.Passed }).Count -eq 0);Failure=$failure;Results=$results}
+    $report | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $qaFolder 'installer-smoke.json') -Encoding utf8
+    $report | ConvertTo-Json -Depth 5
+}
+if (-not $report.Passed) { throw 'Installer smoke test failed; see artifacts/qa/installer-smoke.json.' }

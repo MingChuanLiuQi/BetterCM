@@ -1,0 +1,8 @@
+bin/
+obj/
+artifacts/
+Backups/
+Tests/bin/
+Tests/obj/
+*.exe
+*.log

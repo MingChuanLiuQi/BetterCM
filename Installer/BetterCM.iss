@@ -1,0 +1,77 @@
+#define AppVersion RemoveFileExt(GetFileVersion("..\artifacts\publish\win-x64\BetterCM.exe"))
+#ifdef TestBuild
+  #define InstallId "{{7E8D5579-A731-4323-8AD8-61AA89407AC2}"
+  #define ProductName "BetterCM QA"
+  #define StartupName "BetterCM.QA"
+#else
+  #define InstallId "{{3497A457-D1C1-4D4C-A10A-64D7B32EC101}"
+  #define ProductName "BetterCM"
+  #define StartupName "BetterCM"
+#endif
+[Setup]
+AppId={#InstallId}
+AppName={#ProductName}
+AppVersion={#AppVersion}
+AppPublisher=BetterCM
+DefaultDirName={localappdata}\Programs\{#ProductName}
+DefaultGroupName={#ProductName}
+DisableProgramGroupPage=yes
+PrivilegesRequired=lowest
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+MinVersion=10.0.22000
+#ifdef TestBuild
+OutputDir=..\artifacts\qa
+OutputBaseFilename=BetterCM-{#AppVersion}-QA-Setup-x64
+#else
+OutputDir=..
+OutputBaseFilename=BetterCM-{#AppVersion}-Setup-x64
+#endif
+SetupIconFile=..\Assets\BetterCM.ico
+UninstallDisplayIcon={app}\BetterCM.exe
+Compression=lzma2
+SolidCompression=yes
+WizardStyle=modern
+CloseApplications=yes
+RestartApplications=no
+SetupLogging=yes
+VersionInfoVersion={#AppVersion}.0
+[Languages]
+Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
+[Tasks]
+Name: "autostart"; Description: "登录 Windows 后自动启动 BetterCM"; GroupDescription: "启动选项："; Flags: unchecked
+Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "快捷方式："; Flags: unchecked
+[Files]
+Source: "..\artifacts\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+[Icons]
+Name: "{group}\BetterCM 设置"; Filename: "{app}\BetterCM.exe"
+Name: "{autodesktop}\BetterCM"; Filename: "{app}\BetterCM.exe"; Tasks: desktopicon
+[Registry]
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#StartupName}"; ValueData: """{app}\BetterCM.exe"" --background"; Tasks: autostart; Flags: uninsdeletevalue
+[Run]
+Filename: "{app}\BetterCM.exe"; Description: "启动 BetterCM 并打开设置"; Flags: nowait postinstall skipifsilent
+[UninstallRun]
+#ifndef TestBuild
+Filename: "{app}\BetterCM.exe"; Parameters: "--shutdown"; Flags: runhidden waituntilterminated; RunOnceId: "CloseBetterCM"
+#endif
+[Code]
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  Result := '';
+#ifndef TestBuild
+  if FileExists(ExpandConstant('{app}\BetterCM.exe')) then begin
+    Exec(ExpandConstant('{app}\BetterCM.exe'), '--shutdown', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Sleep(700);
+  end;
+#endif
+end;
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then begin
+    RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', '{#StartupName}');
+    Sleep(700);
+  end;
+end;
+

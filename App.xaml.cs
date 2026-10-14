@@ -1,0 +1,378 @@
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Reflection;
+using System.Windows;
+using System.Windows.Threading;
+using BetterCM.Config;
+using BetterCM.Models;
+using BetterCM.Services;
+using BetterCM.Views;
+using Forms = System.Windows.Forms;
+using Microsoft.Win32;
+namespace BetterCM;
+
+public partial class App : Application
+{
+    private static string InstanceName => Environment.GetEnvironmentVariable("BETTERCM_DATA_DIR") is { Length: > 0 } directory
+        ? "BetterCM." + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(directory).ToUpperInvariant())))[..16] : "BetterCM";
+    private Mutex? _mutex;
+    private EventWaitHandle? _wake, _exitSignal;
+    private RegisteredWaitHandle? _wakeWait, _exitWait;
+    private Forms.NotifyIcon? _tray;
+    private readonly ConfigStore _store = new();
+    private readonly ExplorerContextService _contexts = new();
+    private readonly ShellBridge _shell = new();
+    private ActionExecutor? _executor;
+    private InputService? _input;
+    private MainWindow? _settings;
+    private ContextMenuWindow? _menu;
+    private FileSystemWatcher? _watcher;
+    private DispatcherTimer? _reload;
+    private bool _executing;
+    private CancellationTokenSource? _captureCancellation, _shellCancellation;
+    private int _triggerGeneration;
+    private int _menuRequest;
+    private AppearancePreview? _appearance;
+    private CancellationTokenSource? _detailsCancellation;
+    private bool _previewInactive;
+    private string? _lastInputFailure;
+    public bool IsExiting { get; private set; }
+    public AppConfig Config => _store.Current;
+    public string ConfigPath => _store.FilePath;
+    public string InputStatus => _input?.Status ?? "正在初始化";
+    public SelectedContext? LastContext { get; private set; }
+    public IReadOnlyList<ShellItem> LastShellItems { get; private set; } = [];
+    private IReadOnlyList<ShellMenuNode> _lastNativeMenu = [];
+    public string Timing { get; private set; } = "";
+    public string MenuDiagnostics => _menu?.Diagnostics ?? "菜单正在初始化";
+    protected override async void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+        try
+        {
+            if (e.Args.Length >= 3 && e.Args[0] == "--verb-probe")
+            {
+                await File.WriteAllTextAsync(e.Args[1] + ".tmp", System.Text.Json.JsonSerializer.Serialize(new { Version = AppInfo.Version, Arguments = e.Args.Skip(2).ToArray(), WorkingDirectory = Environment.CurrentDirectory }));
+                File.Move(e.Args[1] + ".tmp", e.Args[1], true);
+                Shutdown(); return;
+            }
+            if (e.Args.Length >= 2 && e.Args[0] == "--shell-host") { await ShellHost.RunAsync(e.Args[1], Dispatcher); Shutdown(); return; }
+            if (e.Args.Length >= 2 && e.Args[0] == "--shell-test-host") { await ShellHost.RunAsync(e.Args[1], Dispatcher, true); Shutdown(); return; }
+            if (e.Args.Length >= 2 && e.Args[0] == "--context-host") { await ExplorerContextService.RunHostAsync(e.Args[1], Dispatcher); Shutdown(); return; }
+            if (e.Args.Length >= 2 && e.Args[0] == "--context-test-host") { await ExplorerContextService.RunHostAsync(e.Args[1], Dispatcher, true); Shutdown(); return; }
+            if (e.Args.Length >= 2 && e.Args[0] == "--performance-check") { await PerformanceChecks.RunAsync(e.Args[1]); Shutdown(); return; }
+            if (e.Args.Length >= 4 && e.Args[0] == "--explorer-view-check") { Shutdown(await ExplorerViewChecks.RunAsync(e.Args[1], e.Args[2], e.Args[3], e.Args.Contains("--hold")) ? 0 : 1); return; }
+            if (e.Args.Length >= 2 && e.Args[0] == "--stress-test") { await RobustnessChecks.RunAsync(e.Args[1]); Shutdown(); return; }
+            if (e.Args.Contains("--self-test")) { var report = e.Args.ElementAtOrDefault(Array.IndexOf(e.Args, "--self-test") + 1); Shutdown(await SelfTests.RunAsync(report) ? 0 : 1); return; }
+            if (e.Args.Contains("--input-check")) { await InteractionChecks.RunAsync(e.Args.ElementAtOrDefault(Array.IndexOf(e.Args, "--input-check") + 1)); Shutdown(); return; }
+            if (e.Args.Length >= 2 && e.Args[0] == "--cascade-input-check") { await CascadeInteractionChecks.RunAsync(e.Args[1]); Shutdown(); return; }
+            if (e.Args.Contains("--shutdown")) { try { using var signal = EventWaitHandle.OpenExisting(@"Local\" + InstanceName + ".Exit"); signal.Set(); } catch (WaitHandleCannotBeOpenedException) { } Shutdown(); return; }
+            if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)) { MessageBox.Show(AppInfo.DisplayName + " 需要 Windows 11。"); Shutdown(); return; }
+            _mutex = new Mutex(true, @"Local\" + InstanceName + ".App", out bool first);
+            if (!first)
+            {
+                for (int attempt = 0; attempt < 20; attempt++)
+                {
+                    try { using var wake = EventWaitHandle.OpenExisting(@"Local\" + InstanceName + ".Wake"); wake.Set(); break; }
+                    catch (WaitHandleCannotBeOpenedException) when (attempt < 19) { await Task.Delay(50); }
+                }
+                Shutdown(); return;
+            }
+            _wake = new(false, EventResetMode.AutoReset, @"Local\" + InstanceName + ".Wake");
+            _exitSignal = new(false, EventResetMode.AutoReset, @"Local\" + InstanceName + ".Exit");
+            _wakeWait = ThreadPool.RegisterWaitForSingleObject(_wake, (_, _) => Dispatcher.BeginInvoke(ShowSettings), null, -1, false);
+            _exitWait = ThreadPool.RegisterWaitForSingleObject(_exitSignal, (_, _) => Dispatcher.BeginInvoke(ExitApplication), null, -1, false);
+            _store.Load(); ThemeService.Apply(Config.Theme, Config.Material);
+            _appearance = new(() => Config, config => ThemeService.Apply(config.Theme, config.Material));
+            _input = new(); _input.Triggered += request => _ = TriggerAsync(request);
+            _input.Apply(Config.GlobalHotkey, Config.ReplaceExplorerMenu);
+            _executor = new(_shell);
+            _menu = new();
+            // Inspection changes taskbar discoverability only; rendering and all dismissal paths stay enabled.
+            _menu.ShowInTaskbar = e.Args.Contains("--inspect-menu");
+            _previewInactive = e.Args.Contains("--preview-inactive");
+            _menu.ObservationChanged += _input.WatchMenu;
+            _menu.IsVisibleChanged += (_, _) => { if (!_menu.IsVisible) { _appearance.Restore(); _detailsCancellation?.Cancel(); } };
+            _input.MenuDismissRequested += (generation, reason) =>
+            {
+                if (generation < 0)
+                {
+                    if (generation == -_menuRequest) { _menuRequest++; _shellCancellation?.Cancel(); _input.WatchPreparation(null); _appearance.Restore(); }
+                }
+                else _menu.Dismiss(generation, reason);
+            };
+            SystemEvents.UserPreferenceChanged += WindowsPreferenceChanged;
+            _settings = new(this); MainWindow = _settings;
+            _menu.ObservationChanged += _ => { if (_settings.IsVisible) _settings.RefreshDiagnostics(); if (!_menu.IsExpanding) ObserveQa(); };
+            CreateTray(); ReportInputStatus(); WatchConfiguration();
+            _ = Task.WhenAll(_contexts.PrepareAsync(), _shell.PrepareAsync());
+            _ = Dispatcher.BeginInvoke(() => { if (!IsExiting) _menu.PreparePresentation(); }, DispatcherPriority.ContextIdle);
+            DispatcherUnhandledException += (_, args) => { AppLog.Write("dispatcher", args.Exception); Notify(args.Exception.Message, true); args.Handled = true; };
+            if (!e.Args.Contains("--background")) ShowSettings();
+            if (_store.LastError != null) Notify(_store.LastError, true);
+            var previewIndex = Array.IndexOf(e.Args, "--preview-file");
+            if (previewIndex >= 0 && e.Args.Length > previewIndex + 1 && (File.Exists(e.Args[previewIndex + 1]) || Directory.Exists(e.Args[previewIndex + 1])))
+            {
+                var path = Path.GetFullPath(e.Args[previewIndex + 1]); bool directory = Directory.Exists(path);
+                LastContext = new() { Source = "菜单预览", CurrentDirectory = directory ? path : Path.GetDirectoryName(path)!, Items = [new(path, directory)] };
+                _ = Dispatcher.BeginInvoke(async () =>
+                {
+                    NativeMethods.GetCursorPos(out var point);
+                    await ShowMenuAsync(point.X, point.Y, LastContext!, Config);
+                    if (e.Args.Contains("--preview-expanded")) _menu.ExpandMore();
+                }, DispatcherPriority.ApplicationIdle);
+            }
+        }
+        catch (Exception ex) { AppLog.Write("startup", ex); MessageBox.Show(ex.Message, "BetterCM 启动失败"); Shutdown(1); }
+    }
+    private void CreateTray()
+    {
+        using var icon = Assembly.GetExecutingAssembly().GetManifestResourceStream("BetterCM.Assets.BetterCM.ico");
+        _tray = new Forms.NotifyIcon { Icon = icon == null ? System.Drawing.SystemIcons.Application : new System.Drawing.Icon(icon), Text = AppInfo.DisplayName + " · 右键菜单", Visible = true };
+        var menu = new Forms.ContextMenuStrip();
+        menu.Items.Add("设置与一级菜单管理", null, (_, _) => Dispatcher.Invoke(ShowSettings));
+        menu.Items.Add("预览菜单", null, (_, _) => Dispatcher.Invoke(Preview));
+        menu.Items.Add("暂停 / 恢复右键接管", null, (_, _) => Dispatcher.Invoke(() => { var next = Config.Clone(); next.ReplaceExplorerMenu = !next.ReplaceExplorerMenu; var error = SaveSettings(next, StartupService.Enabled); if (error != null) Notify(error, true); else Notify(next.ReplaceExplorerMenu ? "已恢复右键接管" : "已暂停右键接管"); }));
+        menu.Items.Add(new Forms.ToolStripSeparator());
+        menu.Items.Add("退出 BetterCM", null, (_, _) => Dispatcher.Invoke(ExitApplication));
+        _tray.ContextMenuStrip = menu;
+        _tray.MouseClick += (_, args) => { if (args.Button == Forms.MouseButtons.Left) Dispatcher.Invoke(ShowSettings); };
+    }
+    public void ShowSettings()
+    {
+        if (_settings == null || IsExiting) return;
+        _menuRequest++; _shellCancellation?.Cancel();
+        _input?.WatchPreparation(null);
+        _menu?.CloseMenu("打开设置");
+        _appearance?.Restore();
+        if (!_settings.IsVisible) _settings.RefreshSettings();
+        _settings.RefreshModeAvailability();
+        _settings.Show();
+        if (_settings.WindowState == WindowState.Minimized) _settings.WindowState = WindowState.Normal;
+        _settings.Activate();
+    }
+    public void Preview()
+        => PreviewWithOptions(Config);
+    public void PreviewWithOptions(AppConfig options)
+    {
+        if (_menu == null) return;
+        ConfigStore.Validate(options);
+        var context = LastContext ?? new SelectedContext { Source = "菜单预览 · 桌面文件夹", CurrentDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop) };
+        NativeMethods.GetCursorPos(out var point); _ = ShowMenuAsync(point.X, point.Y, context, options);
+    }
+    public void CancelPreview()
+    {
+        _menuRequest++; _shellCancellation?.Cancel();
+        _input?.WatchPreparation(null);
+        _menu?.CloseMenu("还原已保存设置", true);
+        _appearance?.Restore(); ThemeService.Apply(Config.Theme, Config.Material);
+    }
+    private async Task TriggerAsync(TriggerRequest request)
+    {
+        if (IsExiting) return;
+        _captureCancellation?.Cancel();
+        var cancellation = _captureCancellation = new CancellationTokenSource();
+        int trigger = ++_triggerGeneration;
+        _menuRequest++; _shellCancellation?.Cancel();
+        _input?.WatchPreparation(null);
+        _menu?.CloseMenu("新的右键请求", true);
+        _appearance?.Restore();
+        var timer = Stopwatch.StartNew();
+        try
+        {
+            var clipboard = ReadClipboardPaths();
+            var context = await _contexts.CaptureAsync(request.Window, clipboard, request.PointerActivation ? new NativeMethods.POINT { X = request.X, Y = request.Y } : null, cancellation.Token, request.NavigationActivation);
+            if (trigger != _triggerGeneration || cancellation.IsCancellationRequested || IsExiting) return;
+            LastContext = context; Timing = $"上下文准备：{timer.Elapsed.TotalMilliseconds:F0} ms";
+            await ShowMenuAsync(request.X, request.Y, context); if (_settings?.IsVisible == true) _settings.RefreshDiagnostics();
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            if (trigger != _triggerGeneration || IsExiting) return;
+            AppLog.Write("trigger", ex);
+            await ShowMenuAsync(request.X, request.Y, new() { SourceWindow = request.Window, Source = "上下文识别失败，请用 Shift+右键" });
+        }
+        finally { if (_captureCancellation == cancellation) _captureCancellation = null; cancellation.Dispose(); }
+    }
+    private static IReadOnlyList<string> ReadClipboardPaths()
+    {
+        try
+        {
+            if (Clipboard.ContainsFileDropList()) return Clipboard.GetFileDropList().Cast<string>().ToArray();
+            if (Clipboard.ContainsText()) return Clipboard.GetText().Split(['\r', '\n'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim('"', '\'')).Where(Path.IsPathFullyQualified).ToArray();
+        }
+        catch (Exception ex) { AppLog.Write("clipboard-read", ex); }
+        return [];
+    }
+    private async Task ShowMenuAsync(int x, int y, SelectedContext context, AppConfig? options = null)
+    {
+        if (_menu == null) return;
+        var config = (options ?? Config).Clone();
+        var toolbar = new List<MenuAction>(); var primary = new List<MenuAction>(); var more = new List<MenuAction>();
+        Task<ShellResponse>? shellLoad = null;
+        int request = ++_menuRequest;
+        _menu.CloseMenu("准备新菜单", true);
+        _appearance?.Begin(request, config, options != null);
+        bool presented = false;
+        try
+        {
+            _shellCancellation?.Cancel(); _shellCancellation?.Dispose();
+            _shellCancellation = new();
+            LastShellItems = [];
+            _lastNativeMenu = [];
+            LastContext = context;
+            foreach (var definition in ActionCatalog.All.Where(_ => !config.ClassicMenu).OrderBy(a => ActionCatalog.Preference(config, a).Order))
+            {
+                var pref = ActionCatalog.Preference(config, definition); if (!pref.Enabled) continue;
+                if (!definition.Toolbar && !definition.Supports(context)) continue;
+                var action = new MenuAction { Id = definition.Id, Title = definition.Title, Glyph = definition.Glyph, Shortcut = definition.Shortcut, Enabled = !ShellCommandMap.IsNative(definition.Id) && definition.Supports(context), Execute = () => RunActionAsync(definition.Id, context, shellLoad) };
+                (definition.Toolbar ? toolbar : pref.IsPrimary ? primary : more).Add(action);
+            }
+            foreach (var custom in config.CustomActions.Where(a => !config.ClassicMenu && ActionCatalog.Matches(a, context)))
+                (custom.IsPrimary ? primary : more).Add(new() { Id = custom.Id, Title = custom.Title, Glyph = "\uE713", Detail = custom.Executable, Execute = () => RunCustomAsync(custom, context) });
+            // Read native capabilities before the first frame. Replacing disabled placeholders
+            // after Show() used to shrink the normal menu and animate an unintended second expansion.
+            ShellResponse? response = null;
+            var timer = Stopwatch.StartNew();
+            var cancellation = _shellCancellation.Token;
+            if (context.HasTarget)
+            {
+                var owner = options != null ? NativeMethods.GetForegroundWindow() : context.SourceWindow;
+                // While Shell builds the menu, a new pointer gesture or foreground switch
+                // cancels this request instead of allowing a late popup to steal focus.
+                _input?.WatchPreparation(new(owner, default, -request, (uint)Environment.TickCount));
+                try { shellLoad = _shell.OpenAsync(context, cancellation, deferSubmenus: config.ClassicMenu); response = await shellLoad; }
+                finally { if (request == _menuRequest) _input?.WatchPreparation(null); }
+            }
+            if (cancellation.IsCancellationRequested || request != _menuRequest || IsExiting) return;
+            List<MenuAction>? shellActions = null;
+            if (response != null)
+            {
+                LastShellItems = response.Success ? response.Items ?? [] : [];
+                _lastNativeMenu = response.Success ? response.Menu ?? [] : [];
+                shellActions = CreateShellActions(response, config);
+                Timing += $"；系统项目准备：{timer.Elapsed.TotalMilliseconds:F0} ms";
+            }
+            int generation = _menu.ShowAt(x, y, context, config, toolbar, primary, more, !_previewInactive, shellActions, response?.Error ?? (!context.HasTarget ? context.Source : null), config.ClassicMenu ? response?.Menu ?? [] : null,
+                config.ClassicMenu && context.ShellBackground && context.SourceWindow != 0 ? () => RunAsync(async (_, _) => { var refreshed = await _shell.RefreshAsync(context); if (!refreshed.Success) throw new InvalidOperationException(refreshed.Error); return null; }) : null,
+                config.ClassicMenu && response?.Session is { } session ? async submenu =>
+                {
+                    var page = await _shell.ExpandAsync(session, submenu);
+                    if (request != _menuRequest || page.Superseded) throw new OperationCanceledException("菜单上下文已改变");
+                    if (!page.Success) throw new InvalidOperationException(page.Error);
+                    LastShellItems = page.Items ?? [];
+                    _lastNativeMenu = submenu is int token ? NativeMenuTree.Replace(_lastNativeMenu, token, page.Menu ?? []) : page.Menu ?? [];
+                    return new NativeMenuPage(page.Menu ?? [], CreateShellActions(page, config));
+                } : null);
+            presented = true;
+            _ = FillDetailsAsync(generation, context);
+            ObserveQa();
+        }
+        finally { if (!presented) _appearance?.Restore(request); }
+    }
+    private async Task FillDetailsAsync(int generation, SelectedContext ctx)
+    {
+        _detailsCancellation?.Cancel();
+        var cancellation = _detailsCancellation = new CancellationTokenSource();
+        try
+        {
+            await MenuDetails.LoadAsync(MenuDetails.IconAsync(ctx.PrimaryPath, ctx.IsDirectory, cancellation: cancellation.Token), MenuDetails.SizeAsync(ctx.PrimaryPath, ctx.IsSingleItem && !ctx.IsDirectory, cancellation: cancellation.Token),
+                (icon, size) => _menu?.SetDetails(generation, icon, ctx.Source.Split('·')[0].Trim() + (size is long length ? " · " + FormatSize(length) : "")), cancellation.Token);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        finally { if (_detailsCancellation == cancellation) _detailsCancellation = null; cancellation.Dispose(); }
+    }
+    private List<MenuAction> CreateShellActions(ShellResponse response, AppConfig config)
+    {
+        if (!response.Success) return [];
+        return (response.Items ?? []).Where(a => config.ClassicMenu || !config.HiddenShellActions.Contains(a.Key)).Select(item => new MenuAction
+            {
+                Id = config.ClassicMenu ? "native:" + item.Command : "shell:" + item.Command + ":" + item.Key, ShellKey = item.Key,
+                Title = item.Title, Group = item.Group, Verb = item.Verb,
+                Detail = item.Group.Length == 0 ? item.Title : item.Group + " · " + item.Title,
+                Glyph = "\uE8A7", Shortcut = item.Shortcut, Enabled = item.Enabled,
+                Execute = () => RunShellAsync(response.Session!, item.Command)
+            }).ToList();
+    }
+    private void ObserveQa()
+    {
+        if (Environment.GetEnvironmentVariable("BETTERCM_QA_REPORT") is not { Length: > 0 } report) return;
+        if (_menu == null || !double.IsFinite(_menu.Height) || !double.IsFinite(_menu.MaxHeight)) return;
+        try
+        {
+            File.WriteAllText(report, System.Text.Json.JsonSerializer.Serialize(new { Version = AppInfo.Version, Time = DateTimeOffset.Now, AcceptedClicks = _input?.AcceptedClicks, NativePopups = _input?.NativePopups, Context = LastContext, ShellItems = LastShellItems, NativeMenu = _lastNativeMenu, Timing, Menu = MenuDiagnostics, Layout = _menu?.LayoutDiagnostics, LayoutState = _menu?.LayoutState, Cascade = _menu?.CascadeLayout }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch (Exception ex) { AppLog.Write("qa-observation", ex); }
+    }
+    private async Task RunActionAsync(string id, SelectedContext ctx, Task<ShellResponse>? shellLoad = null) => await RunAsync(async (token, progress) => await _executor!.ExecuteAsync(id, ctx, token, progress, ShellCommandMap.IsNative(id) && shellLoad != null ? await shellLoad : null), id == "hash");
+    private async Task RunCustomAsync(CustomActionItem action, SelectedContext ctx) => await RunAsync(async (_, _) => { await _executor!.ExecuteCustomAsync(action, ctx); return null; });
+    private async Task RunShellAsync(string session, int command) => await RunAsync(async (_, _) => { var result = await _shell.InvokeAsync(session, command); if (!result.Success) throw new InvalidOperationException(result.Error); return null; });
+    private async Task RunAsync(Func<CancellationToken, IProgress<(double, string)>, Task<string?>> action, bool showProgress = false)
+    {
+        if (_executing) { Notify("已有操作正在执行，请等待或取消"); return; }
+        _executing = true;
+        using var cancellation = new CancellationTokenSource();
+        OperationWindow? operation = showProgress ? new(cancellation) : null;
+        var progress = new Progress<(double, string)>(value => operation?.Report(value.Item1, value.Item2));
+        try { operation?.Show(); var message = await action(cancellation.Token, progress); if (message != null) Notify(message); }
+        catch (OperationCanceledException) { Notify("操作已取消"); }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 1223) { Notify("管理员授权已取消"); }
+        catch (Exception ex) { AppLog.Write("action", ex); Notify(ex.Message, true); }
+        finally { operation?.Close(); _executing = false; }
+    }
+    public void ToggleShellPin(string key)
+    {
+        var next = Config.Clone(); if (!next.PinnedShellActions.Add(key)) next.PinnedShellActions.Remove(key);
+        if (!_store.Save(next)) Notify(_store.LastError!, true);
+        else _settings?.NotifyConfigurationChanged();
+    }
+    public string? SaveSettings(AppConfig next, bool startup)
+    {
+        try
+        {
+            var error = SettingsPersistence.Save(_store, next, startup, StartupService.Capture, StartupService.SetEnabled, StartupService.Restore);
+            if (error != null) return error;
+            ApplyInput(); ThemeService.Apply(Config.Theme, Config.Material);
+            return null;
+        }
+        catch (Exception ex) { AppLog.Write("settings", ex); return ex.Message; }
+    }
+    private void ApplyInput() { _input?.Apply(Config.GlobalHotkey, Config.ReplaceExplorerMenu); ReportInputStatus(); }
+    private void ReportInputStatus()
+    {
+        if (_input == null || _input.PrimaryHotkeyAvailable) { _lastInputFailure = null; return; }
+        if (_lastInputFailure == _input.Status) return;
+        _lastInputFailure = _input.Status;
+        Notify("主快捷键注册失败。" + _input.Status, true);
+    }
+    private static string FormatSize(long size) => size < 1024 ? $"{size} B" : size < 1048576 ? $"{size / 1024.0:F1} KB" : size < 1073741824 ? $"{size / 1048576.0:F1} MB" : $"{size / 1073741824.0:F2} GB";
+    private void WatchConfiguration()
+    {
+        _reload = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
+        _reload.Tick += (_, _) => { _reload.Stop(); if (_store.Load()) { try { ApplyInput(); ThemeService.Apply(Config.Theme, Config.Material); _settings?.NotifyConfigurationChanged(); } catch (Exception ex) { Notify(ex.Message, true); } } else Notify(_store.LastError!, true); };
+        _watcher = new(Path.GetDirectoryName(ConfigPath)!, Path.GetFileName(ConfigPath)) { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName };
+        FileSystemEventHandler changed = (_, _) => Dispatcher.BeginInvoke(() => { _reload.Stop(); _reload.Start(); });
+        _watcher.Changed += changed; _watcher.Created += changed; _watcher.Renamed += (_, _) => Dispatcher.BeginInvoke(() => { _reload.Stop(); _reload.Start(); });
+        _watcher.EnableRaisingEvents = true;
+    }
+    private void WindowsPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+    {
+        if (!IsExiting) Dispatcher.BeginInvoke(() => { if (!IsExiting) ThemeService.Apply(Config.Theme, Config.Material); });
+    }
+    public void Notify(string text, bool error = false)
+    {
+        if (error || Config.ShowNotifications) _tray?.ShowBalloonTip(4000, error ? "BetterCM · 操作未完成" : "BetterCM", text, error ? Forms.ToolTipIcon.Warning : Forms.ToolTipIcon.Info);
+    }
+    public void ExitApplication() { if (IsExiting) return; IsExiting = true; Shutdown(); }
+    protected override void OnExit(ExitEventArgs e)
+    {
+        IsExiting = true; _captureCancellation?.Cancel(); _shellCancellation?.Cancel(); _watcher?.Dispose(); _reload?.Stop(); _input?.Dispose(); _shell.Dispose(); _contexts.Dispose();
+        SystemEvents.UserPreferenceChanged -= WindowsPreferenceChanged;
+        _wakeWait?.Unregister(null); _exitWait?.Unregister(null); _wake?.Dispose(); _exitSignal?.Dispose();
+        if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
+        if (_mutex != null) { try { _mutex.ReleaseMutex(); } catch (ApplicationException) { } _mutex.Dispose(); }
+        base.OnExit(e);
+    }
+}
