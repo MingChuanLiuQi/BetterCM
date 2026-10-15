@@ -50,9 +50,9 @@ verify.ps1 执行警告视为错误的构建、无界面 xUnit、自带运行时
 
 ~~~powershell
 .\artifacts\publish\win-x64\BetterCM.exe --self-test .\artifacts\qa\manual-self-test.json
-.\artifacts\publish\win-x64\BetterCM.exe --stress-test .\artifacts\qa\stress-1.5.0.json
-.\artifacts\publish\win-x64\BetterCM.exe --input-check .\artifacts\qa\input-1.5.0.json
-.\artifacts\publish\win-x64\BetterCM.exe --cascade-input-check .\artifacts\qa\cascade-1.5.0.json
+.\artifacts\publish\win-x64\BetterCM.exe --stress-test .\artifacts\qa\stress-1.5.1.json
+.\artifacts\publish\win-x64\BetterCM.exe --input-check .\artifacts\qa\input-1.5.1.json
+.\artifacts\publish\win-x64\BetterCM.exe --cascade-input-check .\artifacts\qa\cascade-1.5.1.json
 ~~~
 
 自检使用新建的临时夹具进行真实原生复制、移动及无副作用的视图刷新，检查回收站命令但不清空用户回收站。压力检查使用 40 秒假命令及卡住捕获夹具。两种输入检查需要按界面提示操作，只调用记录委托。
