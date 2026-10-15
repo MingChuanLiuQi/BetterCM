@@ -35,6 +35,15 @@ internal static class NativeUiChecks
             var translation = (TranslateTransform)transform.Children[1];
             var scale = (ScaleTransform)transform.Children[0];
             var handle = new WindowInteropHelper(window).Handle;
+            bool IsPopupToolWindow(ContextMenuWindow popup)
+            {
+                var popupHandle = new WindowInteropHelper(popup).Handle;
+                long style = NativeMethods.GetWindowLongPtr(popupHandle, NativeMethods.GWL_STYLE).ToInt64();
+                long extended = NativeMethods.GetWindowLongPtr(popupHandle, NativeMethods.GWL_EXSTYLE).ToInt64();
+                return (style & NativeMethods.WS_SYSMENU) == 0 &&
+                    (extended & NativeMethods.WS_EX_TOOLWINDOW) != 0 && (extended & NativeMethods.WS_EX_APPWINDOW) == 0;
+            }
+            check("根菜单以弹出工具窗口呈现，不声明为普通应用窗口", IsPopupToolWindow(window), null);
             var parentIme = NativeMethods.ImmGetContext(handle);
             check("菜单材质父窗口不关联输入法，搜索内容窗口独立保留", parentIme == 0, null);
             if (parentIme != 0) NativeMethods.ImmReleaseContext(handle, parentIme);
@@ -62,6 +71,7 @@ internal static class NativeUiChecks
             check("菜单禁用重复 DWM 窗口过渡以只播放内容动画", window.NativeTransitionResult >= 0, $"HRESULT=0x{window.NativeTransitionResult:X8}");
             window.OpenGroup(window.VisibleRows[2]);
             check("原生子菜单保持勾选状态并向侧边展开", window.OpenSubmenu?.VisibleRows.Single().Checked == true && window.ContentCoversWindow, null);
+            check("级联子菜单采用相同的弹出工具窗口类型", window.OpenSubmenu is { } popup && IsPopupToolWindow(popup), null);
             window.CloseMenu("原生回归结束", true);
             window.ShowAt(26, 42, new(), config, [], [], [], false, commands, nativeMenu: native);
             window.CloseMenu("首帧前取消", true);

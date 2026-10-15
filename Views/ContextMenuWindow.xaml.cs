@@ -92,7 +92,12 @@ public partial class ContextMenuWindow : Window
             // its default IME association; leave the separate WPF search HWND untouched.
             NativeMethods.ImmAssociateContext(handle, 0);
             long style = NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_STYLE).ToInt64();
-            NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_STYLE, (nint)(style & ~NativeMethods.WS_SYSMENU)); // WS_SYSMENU: a menu has no caption buttons.
+            // ShowInTaskbar=false alone does not declare a native tool window.
+            // Mark every menu HWND as transient before its first activation. Keep
+            // the existing frame/backdrop and WPF input behavior intact.
+            NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_STYLE, (nint)(style & ~NativeMethods.WS_SYSMENU));
+            long extended = NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE).ToInt64();
+            NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE, (nint)((extended | NativeMethods.WS_EX_TOOLWINDOW) & ~NativeMethods.WS_EX_APPWINDOW));
             NativeMethods.SetWindowPos(handle, 0, 0, 0, 0, 0, NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED);
             // Desktop composition owns the parent backdrop; a child HWND presents WPF above it.
             // Keeping the two renderers on one HWND lets the native backdrop cover WPF's redirection surface.
