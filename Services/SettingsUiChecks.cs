@@ -82,7 +82,7 @@ public static class SettingsUiChecks
             var second = new ShellItem(19, "第二个项目", "", "ui-check:second", "properties", true);
             window.RefreshShellItems([first], "第一个目标");
             var shell = (DataGrid)window.FindName("ShellGrid");
-            window.UpdateLayout();
+            await window.Dispatcher.InvokeAsync(window.UpdateLayout, System.Windows.Threading.DispatcherPriority.ContextIdle);
             var pinBox = FindVisual<CheckBox>(shell).First(x => System.Windows.Automation.AutomationProperties.GetName(x).StartsWith("直接显示", StringComparison.Ordinal));
             var pinHeader = FindVisual<System.Windows.Controls.Primitives.DataGridColumnHeader>(shell).First(x => x.Column == shell.Columns[1]);
             double boxCenter = pinBox.TranslatePoint(new Point(pinBox.ActualWidth / 2, 0), shell).X;

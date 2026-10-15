@@ -51,7 +51,9 @@ public sealed class CustomActionWindow : Window
         Hint("用逗号分隔，例如 .txt, .md。* 表示所有文件，dir 表示文件夹。" );
         Field("选中多个项目时", _mode);
         Hint("选择“一次处理所有选中项目”时，在参数中用独立的 {paths} 传入全部路径。" );
-        panel.Children.Add(_admin); panel.Children.Add(_primary); panel.Children.Add(_error);
+        panel.Children.Add(_admin); panel.Children.Add(_primary);
+        _error.Visibility = Visibility.Collapsed;
+        _error.Margin = new Thickness(0, 12, 0, 0);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
         var cancel = new Button { Content = "取消", IsCancel = true, Margin = new Thickness(0, 0, 10, 0) };
         var save = new Button { Content = "应用到列表", IsDefault = true };
@@ -66,11 +68,13 @@ public sealed class CustomActionWindow : Window
                 ConfigStore.Validate(new() { CustomActions = [Result] }); ActionExecutor.ParseArguments(Result.Arguments);
                 DialogResult = true;
             }
-            catch (Exception ex) { _error.Text = ex.Message; }
+            catch (Exception ex) { _error.Text = ex.Message; _error.Visibility = Visibility.Visible; }
         };
         buttons.Children.Add(cancel); buttons.Children.Add(save);
         layout.Children.Add(new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
-        Grid.SetRow(buttons, 1); layout.Children.Add(buttons);
+        var footer = new StackPanel();
+        footer.Children.Add(_error); footer.Children.Add(buttons);
+        Grid.SetRow(footer, 1); layout.Children.Add(footer);
         Content = layout;
     }
 }
