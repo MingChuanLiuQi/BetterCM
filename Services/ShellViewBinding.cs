@@ -135,23 +135,6 @@ public sealed class ShellViewBinding : IDisposable
         return context;
     }
     public void Refresh() { ValidateLocation(); Marshal.ThrowExceptionForHR(Method<RefreshView>(_view, ShellViewRefreshSlot)(_view)); }
-    internal void ShowSelectionContextMenu()
-    {
-        ValidateLocation();
-        if (_selection == null) throw new InvalidOperationException("此菜单未绑定资源管理器选区，请重新右键选中的项目");
-        NativeMethods.SetForegroundWindow(_window);
-        Marshal.ThrowExceptionForHR(Method<ActivateView>(_view, 7)(_view, 2));
-        uint thread = NativeMethods.GetWindowThreadProcessId(_viewWindow, out _);
-        var gui = new NativeMethods.GUITHREADINFO { cbSize = (uint)Marshal.SizeOf<NativeMethods.GUITHREADINFO>() };
-        if (!NativeMethods.GetGUIThreadInfo(thread, ref gui) || gui.hwndFocus == 0 ||
-            gui.hwndFocus != _viewWindow && !NativeMethods.IsChild(_viewWindow, gui.hwndFocus))
-            throw new InvalidOperationException("资源管理器未能聚焦原生选区，请重新右键选中的项目");
-        nint target = gui.hwndFocus;
-        // WM_CONTEXTMENU (-1,-1) asks the original view to open its keyboard menu
-        // for the unchanged selection. No injected keys or recreated command strings.
-        if (!NativeMethods.PostMessage(target, NativeMethods.WM_CONTEXTMENU, target, (nint)(-1)))
-            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-    }
     public void BeginRename(string path)
     {
         ValidateLocation();

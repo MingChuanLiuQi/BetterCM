@@ -18,7 +18,7 @@
 
 短子菜单的测量包含当前 DPI 的 SM_CYMINTRACK，避免 WPF 在复用 Show 时把窗口加高而留下没有内容覆盖的底边。动画前确定最终尺寸，保持此前首帧与展开动画契约。
 
-PinToStartScreen、UnpinFromStartScreen、taskbarpin、taskbarunpin 只按根级规范动词识别。Windows 在本机拒绝普通 IContextMenu/FolderItemVerb 执行，IFolderView2 的返回值也不足以证明固定发生。产品经验证原生视图及选区后激活该视图，向其真实焦点 HWND 发送 WM_CONTEXTMENU，由用户在 Explorer 的原始菜单确认。没有进程伪装、数据库改写或模拟按键。该请求由 Explorer 持有，Shell 宿主不把它记为本进程的未完成原生任务。
+1.5.1 撤回 1.5.0 的二次 Windows 菜单确认方案。PinToStartScreen、UnpinFromStartScreen、taskbarpin、taskbarunpin 不能在 BetterCM 中可靠执行，因此在 ShellMenuSession.ReadMenu 读取原始规范动词后、向命令索引和树添加项之前排除；根菜单、递归与延迟子菜单、搜索、经典和增强模式共用该边界。不按本地化标题猜测，不更改剩余项的原始命令偏移，也不从 Windows 的 HMENU 删除项目。无法索引的命令仍由 Invoke 的白名单检查拒绝。快捷访问及 BetterCM 一级菜单固定不属于这四种动词。真实 Shift+右键入口继续交由 Windows；产品不再代发系统菜单请求，也不更改用户固定状态。
 
 ConfigJson 统一保存、克隆和冲突快照的格式；快照规范化无序隐藏/固定集合，保留动作列表顺序。回滚继续保存原始配置文本，不以规范化 JSON 替换用户原文。
 

@@ -6,7 +6,6 @@ public static class NativeMethods
 {
     public const int WH_MOUSE_LL = 14, GA_ROOT = 2, GWL_STYLE = -16;
     public const int WM_SETFOCUS = 0x0007;
-    public const uint WM_CONTEXTMENU = 0x007B;
     public const int DWMWA_CLOAK = 13, DWMWA_CLOAKED = 14;
     [DllImport("dwmapi.dll")] public static extern int DwmFlush();
     [DllImport("shell32.dll")] public static extern void SHChangeNotify(uint eventId, uint flags, nint first, nint second);

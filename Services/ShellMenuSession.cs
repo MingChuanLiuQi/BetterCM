@@ -183,6 +183,9 @@ public sealed class ShellMenuSession : IDisposable
                     string verb = "";
                     var command = (int)(item.wID - NativeMethods.SHELL_COMMAND_FIRST);
                     try { var builder = new StringBuilder(512); if (_context!.GetCommandString((nuint)command, NativeMethods.GCS_VERBW, 0, builder, 512) >= 0) verb = builder.ToString(); } catch { }
+                    // Apply at the shared reader, including deferred submenus/search.
+                    // Keep the remaining original command offsets for InvokeCommand.
+                    if (UnsupportedShellCommand.IsProtectedPin(verb)) continue;
                     // Include the group: different extensions sometimes share a canonical verb.
                     var key = group + "|" + (verb.Length > 0 ? verb : title);
                     var baseKey = key; int duplicate = 1;
@@ -238,19 +241,10 @@ public sealed class ShellMenuSession : IDisposable
         // preserving its printed access-key suffix.
         return suffix.Success ? suffix.Groups[1].Value.ToUpperInvariant() : "";
     }
-    internal bool RequiresNativeConfirmation(int command) => Items.Any(x => x.Command == command && NativeSelectionCommand.RequiresExplorer(x));
     public void Invoke(int command)
     {
         _view?.ValidateLocation();
         if (!Items.Any(x => x.Command == command && x.Enabled)) throw new InvalidOperationException("动作已失效或不可用");
-        var selected = Items.First(x => x.Command == command);
-        if (NativeSelectionCommand.RequiresExplorer(selected))
-        {
-            if (_view == null) throw new InvalidOperationException("此操作需要桌面或资源管理器的原生选区，请在选中的项目上重新右键");
-            // Windows rejects programmatic pinning, even through its COM menu proxy.
-            // Let Explorer receive the context-menu request and the user's confirmation.
-            _view.ShowSelectionContextMenu(); return;
-        }
         _site?.BeginInvocation();
         if (_owner != 0) NativeMethods.SetForegroundWindow(_owner);
         if (command >= FolderCommandBase && _pasteSession != null) { _pasteSession.Invoke(command - FolderCommandBase); return; }
