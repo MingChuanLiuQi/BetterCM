@@ -21,7 +21,8 @@ public sealed class ActionRow
 public sealed class ShellRow
 {
     public string Key { get; init; } = "";
-    public string Title { get; init; } = "";
+    public string Title { get; set; } = "";
+    public string Group { get; set; } = "";
     public bool Pinned { get; set; }
     public bool Hidden { get; set; }
 }
@@ -31,8 +32,10 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<ActionRow> _actions = [];
     private readonly ObservableCollection<CustomActionItem> _custom = [];
     private readonly ObservableCollection<ShellRow> _shell = [];
+    private readonly Dictionary<string, ShellRow> _shellEdits = new(StringComparer.Ordinal);
     private string _loadedConfig = "";
     private bool _configurationConflict;
+    private bool _validHotkey;
     public MainWindow(App app) { _app = app; InitializeComponent(); Title = AppInfo.DisplayName + " · 设置"; ThemeService.Attach(this); BuiltinGrid.ItemsSource = _actions; CustomGrid.ItemsSource = _custom; ShellGrid.ItemsSource = _shell; RefreshSettings(); }
     public void RefreshSettings()
     {
@@ -56,14 +59,15 @@ public partial class MainWindow : Window
             _actions.Add(new() { Id = definition.Id, Title = definition.Title + (definition.Toolbar ? " · 顶部工具栏" : ""), Shortcut = definition.Shortcut, Enabled = pref.Enabled, IsPrimary = definition.Toolbar || pref.IsPrimary, CanPin = !definition.Toolbar });
         }
         _custom.Clear(); foreach (var custom in config.CustomActions) _custom.Add(custom);
-        _shell.Clear(); foreach (var item in _app.LastShellItems.DistinctBy(x => x.Key)) _shell.Add(new() { Key = item.Key, Title = item.Group.Length == 0 ? item.Title : item.Group + " · " + item.Title, Pinned = config.PinnedShellActions.Contains(item.Key), Hidden = config.HiddenShellActions.Contains(item.Key) });
-        RefreshDiagnostics(); SaveStatus.Text = "设置保存后生效";
+        _shellEdits.Clear(); RefreshShellItems();
+        SaveButton.IsEnabled = _validHotkey;
+        RefreshDiagnostics(); SaveStatus.Text = "修改后点击“保存设置”生效。";
     }
     public void RefreshDiagnostics()
     {
         InputStatus.Text = _app.InputStatus;
         var ctx = _app.LastContext;
-        DiagnosticsText.Text = ctx == null ? "尚未捕获上下文。可在资源管理器选中文件后右键，或按呼出快捷键。\n\n配置：" + _app.ConfigPath : $"捕获时间：{ctx.CapturedAt:HH:mm:ss}\n来源：{ctx.Source}\n数量：{ctx.Items.Count}\n目录：{ctx.CurrentDirectory}\n目标：{string.Join("\n", ctx.TargetPaths)}\n\n{_app.Timing}\n配置：{_app.ConfigPath}";
+        DiagnosticsText.Text = ctx == null ? "还没有右键记录。请先在文件、文件夹或桌面上打开一次 BetterCM。\n\n配置文件：" + _app.ConfigPath : $"最近一次右键：{ctx.CapturedAt:HH:mm:ss}\n识别来源：{ctx.Source}\n选中项目：{ctx.Items.Count} 个\n所在位置：{ctx.CurrentDirectory}\n目标路径：{string.Join("\n", ctx.TargetPaths)}\n\n{_app.Timing}\n配置文件：{_app.ConfigPath}";
         DiagnosticsText.Text += "\n\n" + _app.MenuDiagnostics;
     }
     private static void SelectChoice(ComboBox choice, string value) => choice.SelectedItem = choice.Items.Cast<ComboBoxItem>().First(x => x.Tag.ToString() == value);
@@ -77,8 +81,8 @@ public partial class MainWindow : Window
         SelectChoice(MoreExpansionStyle, config.MoreExpansionAnimation); SelectChoice(GroupExpansionStyle, config.GroupExpansionAnimation);
         MoreExpansionDuration.Value = config.MoreExpansionMs; GroupExpansionDuration.Value = config.GroupExpansionMs;
     }
-    private void ResetMotion_Click(object sender, RoutedEventArgs e) { LoadMotion(new()); SaveStatus.Text = "已恢复默认动效；保存后生效"; }
-    private AppConfig ReadSettings()
+    private void ResetMotion_Click(object sender, RoutedEventArgs e) { LoadMotion(new()); SaveStatus.Text = "已重置动画选项，点击“保存设置”后生效。"; }
+    internal AppConfig ReadSettings()
     {
         BuiltinGrid.CommitEdit(); CustomGrid.CommitEdit(); ShellGrid.CommitEdit();
         var config = _app.Config.Clone();
@@ -98,7 +102,7 @@ public partial class MainWindow : Window
         config.MoreExpansionMs = (int)Math.Round(MoreExpansionDuration.Value); config.GroupExpansionMs = (int)Math.Round(GroupExpansionDuration.Value);
         config.Actions = _actions.Select((x, i) => new ActionPreference { Id = x.Id, Enabled = x.Enabled, IsPrimary = x.IsPrimary, Order = i }).ToList();
         config.CustomActions = _custom.ToList();
-        foreach (var row in _shell) { if (row.Pinned) config.PinnedShellActions.Add(row.Key); else config.PinnedShellActions.Remove(row.Key); if (row.Hidden) config.HiddenShellActions.Add(row.Key); else config.HiddenShellActions.Remove(row.Key); }
+        foreach (var row in _shellEdits.Values) { if (row.Pinned) config.PinnedShellActions.Add(row.Key); else config.PinnedShellActions.Remove(row.Key); if (row.Hidden) config.HiddenShellActions.Add(row.Key); else config.HiddenShellActions.Remove(row.Key); }
         return config;
     }
     private void Save_Click(object sender, RoutedEventArgs e)
@@ -111,7 +115,7 @@ public partial class MainWindow : Window
         {
             var error = _app.SaveSettings(ReadSettings(), StartWithWindows.IsChecked == true);
             if (error == null) RefreshSettings();
-            SaveStatus.Text = error ?? "设置已保存";
+            SaveStatus.Text = error ?? "设置已保存，下次打开菜单时使用新设置。";
         }
         catch (Exception ex) { SaveStatus.Text = ex.Message; }
         RefreshDiagnostics();
@@ -121,8 +125,8 @@ public partial class MainWindow : Window
         RefreshDiagnostics();
         _configurationConflict = _loadedConfig != ConfigJson.Snapshot(_app.Config);
         if (_configurationConflict)
-            SaveStatus.Text = "配置已在外部更新。未保存的编辑已保留；请点击“还原为已保存”加载最新配置后再保存。";
-        SaveButton.IsEnabled = !_configurationConflict && HotkeyValidation.Text.StartsWith("格式正确", StringComparison.Ordinal);
+            SaveStatus.Text = "配置已在外部更新。你的编辑仍然保留；请点击“撤销未保存的修改”加载最新设置，再继续编辑。";
+        SaveButton.IsEnabled = !_configurationConflict && _validHotkey;
     }
     private void Classic_Changed(object sender, RoutedEventArgs e)
         => RefreshModeAvailability();
@@ -133,13 +137,48 @@ public partial class MainWindow : Window
         ShellActions.IsEnabled = ShowMoreOption.IsEnabled = BuiltinGrid.IsEnabled = CustomGrid.IsEnabled = ShellGrid.IsEnabled = enhanced;
         MoreDelay.IsEnabled = enhanced;
         BuiltinCommands.IsEnabled = CustomCommands.IsEnabled = enhanced;
+        RefreshCustomSelection();
+    }
+    private void UseEnhanced_Click(object sender, RoutedEventArgs e)
+    {
+        ClassicOption.IsChecked = false;
+        SaveStatus.Text = "已选择增强模式。可以继续调整，保存设置后生效。";
+    }
+    private void SettingsTab_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.Source == SettingsTabs && ShellGrid != null && SettingsTabs.SelectedItem is TabItem { Header: "系统项目" }) RefreshShellItems();
+    }
+    private void RefreshShell_Click(object sender, RoutedEventArgs e) => RefreshShellItems();
+    private void RefreshShellItems() => RefreshShellItems(_app.LastShellItems, _app.LastContext?.PrimaryName ?? "");
+    internal void RefreshShellItems(IReadOnlyList<ShellItem> items, string targetName)
+    {
+        _shell.Clear();
+        foreach (var item in items.DistinctBy(x => x.Key))
+        {
+            if (!_shellEdits.TryGetValue(item.Key, out var row))
+            {
+                row = new() { Key = item.Key, Title = item.Title, Group = item.Group, Pinned = _app.Config.PinnedShellActions.Contains(item.Key), Hidden = _app.Config.HiddenShellActions.Contains(item.Key) };
+                _shellEdits.Add(item.Key, row);
+            }
+            row.Title = item.Title; row.Group = item.Group;
+            _shell.Add(row);
+        }
+        ShellContextText.Text = _shell.Count == 0 ? "尚未读取右键项目" : $"最近一次右键{(targetName.Length > 0 ? " · " + targetName : "")} · {_shell.Count} 项";
+    }
+    private void CustomSelection_Changed(object sender, SelectionChangedEventArgs e)
+        => RefreshCustomSelection();
+    private void RefreshCustomSelection()
+    {
+        if (EditCustomButton == null || RemoveCustomButton == null || CustomCommands == null) return;
+        EditCustomButton.IsEnabled = RemoveCustomButton.IsEnabled = CustomCommands.IsEnabled && CustomGrid.SelectedItem is CustomActionItem;
     }
     private void Hotkey_Changed(object sender, TextChangedEventArgs e)
     {
         if (HotkeyValidation == null || SaveButton == null) return;
         string? error = null;
         try { Hotkey.Parse(HotkeyText.Text.Trim()); } catch (ArgumentException ex) { error = ex.Message; }
-        HotkeyValidation.Text = error ?? "格式正确；是否被占用将在保存时检查";
+        _validHotkey = error == null;
+        HotkeyValidation.Text = error ?? "格式可用。保存时会检查是否与其他程序冲突。";
         HotkeyValidation.SetResourceReference(TextBlock.ForegroundProperty, error == null ? "MutedBrush" : "ErrorBrush");
         HotkeyText.SetResourceReference(Control.BorderBrushProperty, error == null ? "BorderBrush" : "ErrorBrush");
         SaveButton.IsEnabled = error == null && !_configurationConflict;
@@ -147,7 +186,7 @@ public partial class MainWindow : Window
     private void RestoreSaved_Click(object sender, RoutedEventArgs e)
     {
         foreach (var grid in new[] { BuiltinGrid, CustomGrid, ShellGrid }) { grid.CancelEdit(DataGridEditingUnit.Cell); grid.CancelEdit(DataGridEditingUnit.Row); }
-        _app.CancelPreview(); RefreshSettings(); SaveStatus.Text = "已还原为已保存设置，未保存的修改已取消";
+        _app.CancelPreview(); RefreshSettings(); SaveStatus.Text = "未保存的修改已撤销，当前显示已保存的设置。";
     }
     private void MoveUp_Click(object sender, RoutedEventArgs e) => Move(-1);
     private void MoveDown_Click(object sender, RoutedEventArgs e) => Move(1);

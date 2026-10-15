@@ -31,7 +31,7 @@ public static class SettingsUiChecks
             check("更多与分组动效分别提供独立配置", more.Items.Count == 4 && group.Items.Count == 4 && ((Slider)window.FindName("MoreExpansionDuration")).Value == app.Config.MoreExpansionMs, null);
             ((CheckBox)window.FindName("ReplaceMenu")).IsChecked = !app.Config.ReplaceExplorerMenu;
             ((CheckBox)window.FindName("CompactOption")).IsChecked = !app.Config.CompactMenu;
-            var restore = FindButtons(window).Single(x => x.Content as string == "还原为已保存");
+            var restore = (Button)window.FindName("RestoreButton");
             restore.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             check("还原已保存设置取消热键和其他未保存编辑", hotkey.Text == app.Config.GlobalHotkey && ((CheckBox)window.FindName("ReplaceMenu")).IsChecked == app.Config.ReplaceExplorerMenu && save.IsEnabled, null);
             check("还原设置不写入用户配置", originalConfig == (File.Exists(app.ConfigPath) ? File.ReadAllText(app.ConfigPath) : null), null);
@@ -51,10 +51,65 @@ public static class SettingsUiChecks
                 check("保存事件再次核对当前配置且不落盘", originalConfig == (File.Exists(app.ConfigPath) ? File.ReadAllText(app.ConfigPath) : null), null);
                 restore.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 check("还原最新已保存配置解除冲突并恢复保存", save.IsEnabled && hotkey.Text == app.Config.GlobalHotkey && ((ComboBox)window.FindName("ThemeChoice")).SelectedIndex == (app.Config.Theme == "dark" ? 1 : app.Config.Theme == "light" ? 2 : 0), null);
+                app.Config.Theme = oldTheme;
+                window.NotifyConfigurationChanged();
+                restore.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                check("仅外观外部变化且快捷键未变时撤销仍恢复保存能力", save.IsEnabled && hotkey.Text == app.Config.GlobalHotkey, null);
             }
             finally { app.Config.Theme = oldTheme; }
+            var tabs = (TabControl)window.FindName("SettingsTabs");
+            tabs.SelectedIndex = 3;
+            classic.IsChecked = true;
+            window.UpdateLayout();
+            check("经典模式在自定义动作页解释不可用原因并提供切换入口", ((Border)window.FindName("CustomModeNotice")).IsVisible && !((StackPanel)window.FindName("CustomCommands")).IsEnabled, null);
+            var switchMode = FindButtons(window).First(x => x.Content as string == "使用增强模式");
+            switchMode.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            check("页内切换增强模式只更改未保存选项且不写入配置", classic.IsChecked == false && ((StackPanel)window.FindName("CustomCommands")).IsEnabled && originalConfig == (File.Exists(app.ConfigPath) ? File.ReadAllText(app.ConfigPath) : null), null);
+            var custom = (DataGrid)window.FindName("CustomGrid");
+            var customRows = (System.Collections.ObjectModel.ObservableCollection<BetterCM.Config.CustomActionItem>)custom.ItemsSource;
+            var previousRows = customRows.ToArray();
+            try
+            {
+                customRows.Clear(); window.UpdateLayout();
+                check("无自定义动作时显示引导且禁用无选项的编辑移除", ((StackPanel)window.FindName("CustomEmptyState")).IsVisible && !((Button)window.FindName("EditCustomButton")).IsEnabled && !((Button)window.FindName("RemoveCustomButton")).IsEnabled, null);
+                var item = new BetterCM.Config.CustomActionItem { Title = "界面检查动作", Executable = "notepad.exe" };
+                customRows.Add(item); custom.SelectedItem = item; window.UpdateLayout();
+                check("添加并选中动作后显示列表且编辑移除可用", !((StackPanel)window.FindName("CustomEmptyState")).IsVisible && custom.IsVisible && ((Button)window.FindName("EditCustomButton")).IsEnabled && ((Button)window.FindName("RemoveCustomButton")).IsEnabled, null);
+            }
+            finally { customRows.Clear(); foreach (var row in previousRows) customRows.Add(row); }
+            tabs.SelectedIndex = 4;
+            var first = new ShellItem(7, "第一个项目", "分组", "ui-check:first", "open", true);
+            var second = new ShellItem(19, "第二个项目", "", "ui-check:second", "properties", true);
+            window.RefreshShellItems([first], "第一个目标");
+            var shell = (DataGrid)window.FindName("ShellGrid");
+            window.UpdateLayout();
+            var pinBox = FindVisual<CheckBox>(shell).First(x => System.Windows.Automation.AutomationProperties.GetName(x).StartsWith("直接显示", StringComparison.Ordinal));
+            var pinHeader = FindVisual<System.Windows.Controls.Primitives.DataGridColumnHeader>(shell).First(x => x.Column == shell.Columns[1]);
+            double boxCenter = pinBox.TranslatePoint(new Point(pinBox.ActualWidth / 2, 0), shell).X;
+            double headerCenter = pinHeader.TranslatePoint(new Point(pinHeader.ActualWidth / 2, 0), shell).X;
+            check("系统项目勾选框与对应列标题水平居中对齐", Math.Abs(boxCenter - headerCenter) < 1.5, $"checkbox={boxCenter:F2}, header={headerCenter:F2}");
+            ((ShellRow)shell.Items[0]).Pinned = true;
+            window.RefreshShellItems([second], "第二个目标");
+            ((ShellRow)shell.Items[0]).Hidden = true;
+            window.RefreshShellItems([first], "第一个目标");
+            var pending = window.ReadSettings();
+            check("切换系统项目列表保留不同目标的未保存勾选且不写入配置", ((ShellRow)shell.Items[0]).Pinned && pending.PinnedShellActions.Contains(first.Key) && pending.HiddenShellActions.Contains(second.Key) && originalConfig == (File.Exists(app.ConfigPath) ? File.ReadAllText(app.ConfigPath) : null), null);
+            restore.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            check("撤销同时清理已离开目标的临时系统项目修改", !window.ReadSettings().PinnedShellActions.Contains(first.Key) && !window.ReadSettings().HiddenShellActions.Contains(second.Key), null);
+            ((CheckBox)window.FindName("Animations")).IsChecked = false;
+            check("关闭菜单动画同时禁用展开动效选项", !((ComboBox)window.FindName("MoreExpansionStyle")).IsEnabled && !((ComboBox)window.FindName("GroupExpansionStyle")).IsEnabled, null);
+            restore.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         }
         finally { window.Close(); }
+    }
+    private static IEnumerable<T> FindVisual<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is T match) yield return match;
+            foreach (var nested in FindVisual<T>(child)) yield return nested;
+        }
     }
     private static IEnumerable<Button> FindButtons(DependencyObject root)
     {

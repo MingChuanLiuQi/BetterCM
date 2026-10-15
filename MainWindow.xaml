@@ -1,5 +1,12 @@
-<Window x:Class="BetterCM.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:services="clr-namespace:BetterCM.Services" Style="{StaticResource {x:Type Window}}" Title="BetterCM · 设置" Width="960" Height="740" MinWidth="880" MinHeight="590" WindowStartupLocation="CenterScreen" Closing="Window_Closing">
-  <Grid Margin="26">
+<Window x:Class="BetterCM.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:services="clr-namespace:BetterCM.Services" Style="{StaticResource {x:Type Window}}" Title="BetterCM · 设置" Width="1040" Height="800" MinWidth="920" MinHeight="640" WindowStartupLocation="CenterScreen" Closing="Window_Closing">
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="Themes/SettingsControls.xaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Window.Resources>
+  <Grid Margin="28">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
       <RowDefinition Height="*" />
@@ -12,29 +19,31 @@
       </Grid.ColumnDefinitions>
       <StackPanel>
         <TextBlock Text="BetterCM" FontSize="27" FontWeight="SemiBold" />
-        <TextBlock Text="好看的右键菜单，也可以一步到位。" Foreground="{DynamicResource MutedBrush}" Margin="0,5,0,0" />
+        <TextBlock Text="按你的习惯，调整右键菜单。" Foreground="{DynamicResource MutedBrush}" Margin="0,6,0,0" />
       </StackPanel>
       <Border Grid.Column="1" Background="{DynamicResource CardBg}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="14,10" VerticalAlignment="Center">
         <TextBlock Text="{x:Static services:AppInfo.Version}" Foreground="{DynamicResource MutedBrush}" />
       </Border>
     </Grid>
-    <TabControl Grid.Row="1">
+    <TabControl x:Name="SettingsTabs" Grid.Row="1" SelectionChanged="SettingsTab_Changed">
       <TabItem Header="常规">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel Margin="4,0,14,0">
+            <TextBlock Text="常规" Style="{StaticResource PageTitle}" />
+            <TextBlock Text="选择菜单模式，设置右键和快捷键的使用方式。" Style="{StaticResource PageDescription}" />
             <Border Background="{DynamicResource CardBg}" CornerRadius="9" Padding="20" Margin="0,0,0,14">
               <StackPanel>
-                <TextBlock Text="右键与启动" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,8" />
-                <CheckBox x:Name="ReplaceMenu" Content="在资源管理器（含导航栏）和桌面使用 BetterCM" />
-                <TextBlock Text="普通右键始终使用 BetterCM。按下前按住 Shift，可使用原生菜单或原生右键拖动。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" />
-                <CheckBox x:Name="StartWithWindows" Content="登录 Windows 后自动启动，静默驻留托盘" />
-                <TextBlock Text="关闭此设置窗口后仍在托盘运行；从托盘菜单选择“退出”才会结束程序。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" />
+                <TextBlock Text="启动与快捷键" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,8" />
+                <CheckBox x:Name="ReplaceMenu" Content="右键桌面和资源管理器时使用 BetterCM" />
+                <TextBlock Text="启用后会替换这些位置的右键菜单，包括资源管理器侧边栏。按住 Shift 再右键，可临时使用 Windows 菜单。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" />
+                <CheckBox x:Name="StartWithWindows" Content="登录 Windows 后自动启动" />
+                <TextBlock Text="启动后在托盘运行，不自动打开设置窗口。要结束程序，请在托盘菜单中选择“退出”。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" />
                 <Grid Margin="0,17,0,0">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="140" />
                     <ColumnDefinition Width="*" />
                   </Grid.ColumnDefinitions>
-                  <TextBlock Text="呼出快捷键" VerticalAlignment="Center" />
+                  <TextBlock Text="打开菜单的快捷键" VerticalAlignment="Center" />
                   <TextBox x:Name="HotkeyText" Grid.Column="1" TextChanged="Hotkey_Changed" ToolTip="例如 Alt+X 或 Ctrl+Alt+M" />
                 </Grid>
                 <TextBlock x:Name="HotkeyValidation" FontSize="12" TextWrapping="Wrap" Margin="140,7,0,0" />
@@ -43,38 +52,38 @@
             </Border>
             <Border Background="{DynamicResource CardBg}" CornerRadius="9" Padding="20">
               <StackPanel>
-                <TextBlock Text="菜单体验" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,8" />
-                <CheckBox x:Name="ClassicOption" Content="忠实呈现经典右键菜单（默认）" Checked="Classic_Changed" Unchecked="Classic_Changed" />
-                <TextBlock Text="直接使用 Windows 的项目顺序、分隔线和子菜单。此模式不加入内置或自定义动作，也不折叠、隐藏或重新固定系统项目；旧增强配置保留供手动切换。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8" />
-                <CheckBox x:Name="ShellActions" Content="显示系统与第三方右键项目" />
-                <CheckBox x:Name="FileDetails" Content="显示来源与文件大小（完整路径悬停名称查看）" />
-                <CheckBox x:Name="Notifications" Content="操作完成后显示托盘提示" />
-                <CheckBox x:Name="ShowMoreOption" Content="使用“显示更多项目”折叠非常用动作" />
-                <TextBlock Text="取消勾选后，首次打开即显示非常用动作及分组入口，没有二次展开。" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" />
-                <CheckBox x:Name="CompactOption" Content="小尺寸菜单（紧凑行高，关闭搜索，保留分组）" Margin="0,8,0,0" />
-                <TextBlock Text="小尺寸模式直接展示全部一级项目。两种尺寸均保留动作分组，悬停或点击后向侧边展开子菜单；只有“显示更多项目”在原菜单向下展开。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" />
+                <TextBlock Text="菜单模式与显示" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,8" />
+                <CheckBox x:Name="ClassicOption" Content="使用经典模式（推荐）" Checked="Classic_Changed" Unchecked="Classic_Changed" />
+                <TextBlock Text="保留 Windows 经典菜单的顺序和分组，使用 BetterCM 的外观。取消勾选可使用增强模式，添加自定义动作、调整顺序或隐藏项目。切换模式不会清除已有的增强设置。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8" />
+                <CheckBox x:Name="ShellActions" Content="在增强模式中显示系统和其他程序的项目" />
+                <CheckBox x:Name="FileDetails" Content="显示文件大小和来源信息" />
+                <CheckBox x:Name="Notifications" Content="显示操作结果提示" />
+                <CheckBox x:Name="ShowMoreOption" Content="把非常用动作收进“显示更多项目”" />
+                <TextBlock Text="仅用于增强模式。关闭后，所有一级项目会直接显示。" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" />
+                <CheckBox x:Name="CompactOption" Content="使用紧凑菜单" Margin="0,8,0,0" />
+                <TextBlock Text="减小行高并关闭搜索，方便一眼看清更多项目。分组仍向侧边展开，一级项目不再折叠。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" />
                 <Grid Margin="0,14,0,0" IsEnabled="{Binding ElementName=ShowMoreOption, Path=IsChecked}">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="130" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="65" />
                   </Grid.ColumnDefinitions>
-                  <TextBlock Text="更多项目悬停延时" VerticalAlignment="Center" />
+                  <TextBlock Text="更多项目等待时间" VerticalAlignment="Center" />
                   <Slider x:Name="MoreDelay" Grid.Column="1" Minimum="80" Maximum="600" TickFrequency="20" IsSnapToTickEnabled="True" />
                   <TextBlock Grid.Column="2" Text="{Binding ElementName=MoreDelay, Path=Value, StringFormat={}{0:0} ms}" HorizontalAlignment="Right" VerticalAlignment="Center" />
                 </Grid>
-                <TextBlock Text="默认 180 ms。短暂停留后在原菜单向下展开，点击可立即展开。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" />
+                <TextBlock Text="鼠标停留多久后展开“显示更多项目”。点击可立即展开。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" />
                 <Grid Margin="0,14,0,0">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="130" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="65" />
                   </Grid.ColumnDefinitions>
-                  <TextBlock Text="侧边子菜单悬停延时" VerticalAlignment="Center" />
+                  <TextBlock Text="子菜单等待时间" VerticalAlignment="Center" />
                   <Slider x:Name="SubmenuDelay" Grid.Column="1" Minimum="80" Maximum="600" TickFrequency="20" IsSnapToTickEnabled="True" />
                   <TextBlock Grid.Column="2" Text="{Binding ElementName=SubmenuDelay, Path=Value, StringFormat={}{0:0} ms}" HorizontalAlignment="Right" VerticalAlignment="Center" />
                 </Grid>
-                <TextBlock Text="两种尺寸均适用。移动到另一分组后等待该延时切换；点击分组可立即打开。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" />
+                <TextBlock Text="鼠标移到分组后，等待多久打开侧边子菜单。点击可立即打开。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" />
               </StackPanel>
             </Border>
           </StackPanel>
@@ -83,11 +92,11 @@
       <TabItem Header="外观与动效">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel Margin="4,0,14,0">
-            <TextBlock Text="外观与动效" FontSize="23" FontWeight="SemiBold" Margin="0,0,0,5" />
-            <TextBlock Text="柔和的系统材质，配上你习惯的菜单节奏。" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,18" />
+            <TextBlock Text="外观与动效" Style="{StaticResource PageTitle}" />
+            <TextBlock Text="选择背景材质，调整菜单打开和展开的节奏。" Style="{StaticResource PageDescription}" />
             <Border Style="{StaticResource SettingsCard}" Margin="0,0,0,14">
               <StackPanel>
-                <TextBlock Text="窗口材质" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,14" />
+                <TextBlock Text="主题与背景" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,14" />
                 <Grid>
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="110" />
@@ -105,12 +114,12 @@
                   </ComboBox>
                   <TextBlock Grid.Row="1" Text="背景材质" VerticalAlignment="Center" Margin="0,12,0,0" />
                   <ComboBox x:Name="MaterialChoice" Grid.Row="1" Grid.Column="1" Height="34" Margin="0,12,0,0">
-                    <ComboBoxItem Content="Mica · 加深云母" Tag="mica" />
-                    <ComboBoxItem Content="Acrylic · 亚克力" Tag="acrylic" />
+                    <ComboBoxItem Content="云母（Mica）" Tag="mica" />
+                    <ComboBoxItem Content="亚克力（Acrylic）" Tag="acrylic" />
                     <ComboBoxItem Content="纯色" Tag="solid" />
                   </ComboBox>
                 </Grid>
-                <TextBlock Text="云母柔和地融合壁纸颜色；亚克力呈现背景模糊。关闭 Windows 透明效果或启用高对比度时，自动使用纯色。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,12,0,0" />
+                <TextBlock Text="云母融合壁纸色彩，亚克力模糊窗口背后的内容。Windows 关闭透明效果或开启高对比度时，会使用纯色背景。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,12,0,0" />
               </StackPanel>
             </Border>
             <Border Style="{StaticResource SettingsCard}" Margin="0,0,0,14">
@@ -124,7 +133,7 @@
                     <ColumnDefinition Width="*" />
                   </Grid.ColumnDefinitions>
                   <StackPanel>
-                    <TextBlock Text="打开" Margin="0,0,0,8" />
+                    <TextBlock Text="打开菜单" Margin="0,0,0,8" />
                     <ComboBox x:Name="OpenStyle" Height="34">
                       <ComboBoxItem Content="无动画" Tag="none" />
                       <ComboBoxItem Content="淡入" Tag="fade" />
@@ -143,7 +152,7 @@
                     </Grid>
                   </StackPanel>
                   <StackPanel Grid.Column="2">
-                    <TextBlock Text="关闭" Margin="0,0,0,8" />
+                    <TextBlock Text="关闭菜单" Margin="0,0,0,8" />
                     <ComboBox x:Name="CloseStyle" Height="34">
                       <ComboBoxItem Content="无动画" Tag="none" />
                       <ComboBoxItem Content="淡出" Tag="fade" />
@@ -173,27 +182,27 @@
                     <RowDefinition Height="34" />
                     <RowDefinition Height="44" />
                   </Grid.RowDefinitions>
-                  <TextBlock Text="滑动距离" VerticalAlignment="Center" />
+                  <TextBlock Text="滑动幅度" VerticalAlignment="Center" />
                   <Slider x:Name="MotionDistance" Grid.Column="1" Minimum="2" Maximum="32" TickFrequency="1" IsSnapToTickEnabled="True" />
                   <TextBlock Grid.Column="2" Text="{Binding ElementName=MotionDistance, Path=Value, StringFormat={}{0:0} DIP}" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                  <TextBlock Grid.Row="1" Text="缩放起点" VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="1" Text="起始大小" VerticalAlignment="Center" />
                   <Slider x:Name="MotionScale" Grid.Row="1" Grid.Column="1" Minimum="90" Maximum="99" TickFrequency="1" IsSnapToTickEnabled="True" />
                   <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding ElementName=MotionScale, Path=Value, StringFormat={}{0:0}%}" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                  <TextBlock Grid.Row="2" Text="动画曲线" VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="2" Text="变化节奏" VerticalAlignment="Center" />
                   <ComboBox x:Name="MotionEasing" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Height="34">
-                    <ComboBoxItem Content="平滑 · Cubic" Tag="cubic" />
-                    <ComboBoxItem Content="利落 · Quintic" Tag="quintic" />
-                    <ComboBoxItem Content="柔和 · Sine" Tag="sine" />
-                    <ComboBoxItem Content="匀速 · Linear" Tag="linear" />
+                    <ComboBoxItem Content="平滑（推荐）" Tag="cubic" />
+                    <ComboBoxItem Content="利落" Tag="quintic" />
+                    <ComboBoxItem Content="柔和" Tag="sine" />
+                    <ComboBoxItem Content="匀速" Tag="linear" />
                   </ComboBox>
                 </Grid>
-                <TextBlock Text="操作立即执行，关闭动画不等待命令完成。遵循 Windows 的动画与辅助功能设置。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,12,0,0" />
+                <TextBlock Text="时长越短，菜单越利落。Windows 关闭动画时，这里的动画也会关闭。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,12,0,0" />
               </StackPanel>
             </Border>
-            <Border Style="{StaticResource SettingsCard}" Margin="0,0,0,14">
+            <Border x:Name="ExpansionCard" Style="{StaticResource SettingsCard}" Margin="0,0,0,14" IsEnabled="{Binding ElementName=Animations, Path=IsChecked}">
               <StackPanel>
-                <TextBlock Text="更多项目与分组展开" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,4" />
-                <CheckBox x:Name="ExpansionAnimations" Content="平滑展开与收起，逐项淡入或滑入" IsEnabled="{Binding ElementName=Animations, Path=IsChecked}" />
+                <TextBlock Text="展开动画" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,4" />
+                <CheckBox x:Name="ExpansionAnimations" Content="为更多项目和侧边子菜单启用动画" IsEnabled="{Binding ElementName=Animations, Path=IsChecked}" />
                 <Grid Margin="0,8,0,0" IsEnabled="{Binding ElementName=ExpansionAnimations, Path=IsChecked}">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -235,142 +244,275 @@
                     </Grid>
                   </StackPanel>
                 </Grid>
-                <TextBlock Text="默认更多项目 220 ms、分组 180 ms，使用上方动画曲线。搜索即时更新；关闭系统动画或启用高对比度时立即展开。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,12,0,0" />
+                <TextBlock Text="分别设置向下展开的更多项目和向侧边打开的子菜单。它们使用上方选择的变化节奏；搜索结果始终即时更新。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,12,0,0" />
               </StackPanel>
             </Border>
             <StackPanel Orientation="Horizontal">
-              <Button Content="预览当前外观与动效" Click="Preview_Click" BorderBrush="{DynamicResource AccentBrush}" />
-              <Button Content="恢复默认动效" Click="ResetMotion_Click" Margin="10,0,0,0" />
+              <Button Content="预览当前效果" Click="Preview_Click" BorderBrush="{DynamicResource AccentBrush}" />
+              <Button Content="重置动画" Click="ResetMotion_Click" Margin="10,0,0,0" />
             </StackPanel>
-            <TextBlock Text="预览使用当前选项；按 Esc 或点击菜单外查看关闭效果。点击“保存设置”后正式生效。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,10,0,8" />
+            <TextBlock Text="预览不会保存设置。按 Esc 或点击菜单外结束预览，随后恢复原来的外观。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,10,0,8" />
           </StackPanel>
         </ScrollViewer>
       </TabItem>
-      <TabItem Header="一级菜单">
-        <Grid>
+      <TabItem Header="内置动作">
+        <Grid Margin="4,0,8,0">
           <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
-          <TextBlock Text="勾选“一级显示”的动作直接出现在菜单中；其余动作悬停“更多项目”即在原菜单展开。顶部工具栏项目始终位于顶部。" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,12" />
-          <DataGrid x:Name="BuiltinGrid" Grid.Row="1" CanUserSortColumns="False">
+          <StackPanel>
+            <TextBlock Text="内置动作" Style="{StaticResource PageTitle}" />
+            <TextBlock Text="把常用动作放在菜单第一层，也可以调整它们的顺序。" Style="{StaticResource PageDescription}" />
+          </StackPanel>
+          <Border x:Name="BuiltinModeNotice" Grid.Row="1" Style="{StaticResource ModeNotice}">
+            <DockPanel>
+              <Button DockPanel.Dock="Right" Content="使用增强模式" Click="UseEnhanced_Click" Margin="18,0,0,0" VerticalAlignment="Center" />
+              <TextBlock Text="当前使用经典模式，菜单顺序由 Windows 决定。切换到增强模式后可在这里调整。" TextWrapping="Wrap" LineHeight="21" VerticalAlignment="Center" />
+            </DockPanel>
+          </Border>
+          <Border Grid.Row="2" Style="{StaticResource ListCard}">
+          <DataGrid x:Name="BuiltinGrid" CanUserSortColumns="False">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="动作" Binding="{Binding Title}" IsReadOnly="True" Width="*" />
-              <DataGridTemplateColumn Header="启用" Width="80">
+              <DataGridTextColumn Header="动作名称" Binding="{Binding Title}" IsReadOnly="True" Width="*" ElementStyle="{StaticResource TableText}" />
+              <DataGridTemplateColumn Header="启用" Width="80" HeaderStyle="{StaticResource CenteredHeader}">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate>
-                    <CheckBox IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" Margin="0" />
+                    <CheckBox IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource TableCheck}" AutomationProperties.Name="{Binding Title, StringFormat=启用：{0}}" />
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTemplateColumn Header="一级显示" Width="100">
+              <DataGridTemplateColumn Header="直接显示" Width="92" HeaderStyle="{StaticResource CenteredHeader}">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate>
-                    <CheckBox IsChecked="{Binding IsPrimary, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanPin}" HorizontalAlignment="Center" Margin="0" />
+                    <CheckBox IsChecked="{Binding IsPrimary, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanPin}" Style="{StaticResource TableCheck}" AutomationProperties.Name="{Binding Title, StringFormat=直接显示：{0}}" />
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Header="快捷键" Binding="{Binding Shortcut}" IsReadOnly="True" Width="110" />
+              <DataGridTextColumn Header="快捷键" Binding="{Binding Shortcut}" IsReadOnly="True" Width="100" ElementStyle="{StaticResource TableText}" />
             </DataGrid.Columns>
           </DataGrid>
-          <StackPanel x:Name="BuiltinCommands" Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,0">
-            <Button Content="上移" Click="MoveUp_Click" Margin="0,0,8,0" />
-            <Button Content="下移" Click="MoveDown_Click" />
-            <Button Content="预览菜单" Click="Preview_Click" Margin="14,0,0,0" />
+          </Border>
+          <StackPanel Grid.Row="3" Margin="0,16,0,0">
+            <StackPanel x:Name="BuiltinCommands" Orientation="Horizontal">
+              <Button Content="上移" Click="MoveUp_Click" Margin="0,0,8,0" />
+              <Button Content="下移" Click="MoveDown_Click" />
+              <Button Content="预览菜单" Click="Preview_Click" Margin="14,0,0,0" />
+            </StackPanel>
+            <TextBlock Text="“直接显示”的动作放在第一层，其余动作可收进“显示更多项目”。工具栏动作始终在菜单顶部。" Style="{StaticResource SettingsHint}" />
           </StackPanel>
         </Grid>
       </TabItem>
       <TabItem Header="自定义动作">
-        <Grid>
+        <Grid Margin="4,0,8,0">
           <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
-          <TextBlock Text="添加你常用的程序或脚本，并设置适用扩展名和多选行为。设置保存后生效。" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,12" />
-          <DataGrid x:Name="CustomGrid" Grid.Row="1">
+          <StackPanel>
+            <TextBlock Text="自定义动作" Style="{StaticResource PageTitle}" />
+            <TextBlock Text="把常用程序加进右键菜单，用它打开选中的文件或文件夹。" Style="{StaticResource PageDescription}" />
+          </StackPanel>
+          <Border x:Name="CustomModeNotice" Grid.Row="1" Style="{StaticResource ModeNotice}">
+            <DockPanel>
+              <Button DockPanel.Dock="Right" Content="使用增强模式" Click="UseEnhanced_Click" Margin="18,0,0,0" VerticalAlignment="Center" />
+              <TextBlock Text="自定义动作在增强模式下使用。已有动作会保留，切换后即可编辑。" TextWrapping="Wrap" LineHeight="21" VerticalAlignment="Center" />
+            </DockPanel>
+          </Border>
+          <Border x:Name="CustomListCard" Grid.Row="2" Style="{StaticResource ListCard}">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+              </Grid.RowDefinitions>
+              <Grid Margin="18,16">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Items.Count, ElementName=CustomGrid, StringFormat=已添加 {0} 个动作}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" />
+                <StackPanel x:Name="CustomCommands" Grid.Column="1" Orientation="Horizontal">
+                  <Button Content="添加动作" Click="AddCustom_Click" BorderBrush="{DynamicResource AccentBrush}" Margin="0,0,8,0" />
+                  <Button x:Name="EditCustomButton" Content="编辑" Click="EditCustom_Click" Margin="0,0,8,0" IsEnabled="False" />
+                  <Button x:Name="RemoveCustomButton" Content="移除" Click="RemoveCustom_Click" IsEnabled="False" />
+                </StackPanel>
+              </Grid>
+          <DataGrid x:Name="CustomGrid" Grid.Row="1" SelectionChanged="CustomSelection_Changed">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="名称" Binding="{Binding Title}" IsReadOnly="True" Width="*" />
-              <DataGridTemplateColumn Header="启用" Width="65">
+              <DataGridTextColumn Header="动作名称" Binding="{Binding Title}" IsReadOnly="True" Width="*" MinWidth="130" ElementStyle="{StaticResource TableText}" />
+              <DataGridTextColumn Header="打开程序" Binding="{Binding Executable}" IsReadOnly="True" Width="*" MinWidth="140" ElementStyle="{StaticResource TableText}" />
+              <DataGridTemplateColumn Header="启用" Width="80" HeaderStyle="{StaticResource CenteredHeader}">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate>
-                    <CheckBox IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" Margin="0" />
+                    <CheckBox IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource TableCheck}" AutomationProperties.Name="{Binding Title, StringFormat=启用：{0}}" />
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTemplateColumn Header="一级" Width="65">
+              <DataGridTemplateColumn Header="直接显示" Width="92" HeaderStyle="{StaticResource CenteredHeader}">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate>
-                    <CheckBox IsChecked="{Binding IsPrimary, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" Margin="0" />
+                    <CheckBox IsChecked="{Binding IsPrimary, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource TableCheck}" AutomationProperties.Name="{Binding Title, StringFormat=直接显示：{0}}" />
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Header="程序" Binding="{Binding Executable}" IsReadOnly="True" Width="230" />
             </DataGrid.Columns>
           </DataGrid>
-          <StackPanel x:Name="CustomCommands" Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,0">
-            <Button Content="添加动作" Click="AddCustom_Click" Margin="0,0,8,0" />
-            <Button Content="编辑选中项" Click="EditCustom_Click" Margin="0,0,8,0" />
-            <Button Content="移除选中项" Click="RemoveCustom_Click" />
-          </StackPanel>
+              <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" IsHitTestVisible="{Binding IsVisible, ElementName=CustomEmptyState}">
+              <StackPanel x:Name="CustomEmptyState">
+                <StackPanel.Style>
+                  <Style TargetType="StackPanel" BasedOn="{StaticResource EmptyState}">
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding HasItems, ElementName=CustomGrid}" Value="False">
+                        <Setter Property="Visibility" Value="Visible" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </StackPanel.Style>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                  <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons" FontSize="20" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                  <TextBlock Text="还没有自定义动作" Style="{StaticResource EmptyTitle}" Margin="0" />
+                </StackPanel>
+                <TextBlock Text="从右上角添加一个常用程序，再选择适用的文件类型和多选方式。" Style="{StaticResource SettingsHint}" TextAlignment="Center" LineHeight="19" Margin="0,10,0,0" />
+              </StackPanel>
+              </ScrollViewer>
+            </Grid>
+          </Border>
+          <TextBlock Grid.Row="3" Text="勾选“直接显示”，可把动作放在菜单第一层。修改完成后，点击下方“保存设置”。" Style="{StaticResource SettingsHint}" Margin="0,14,0,0" />
         </Grid>
       </TabItem>
       <TabItem Header="系统项目">
-        <Grid>
+        <Grid Margin="4,0,8,0">
           <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
-          <TextBlock Text="这里展示最近一次识别到的系统项目。可固定到一级菜单或隐藏；菜单中也可直接点击星标。不同文件类型拥有不同项目。" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,12" />
+          <StackPanel>
+            <TextBlock Text="系统项目" Style="{StaticResource PageTitle}" />
+            <TextBlock Text="管理 Windows 和其他程序加入的右键项目，留下你常用的内容。" Style="{StaticResource PageDescription}" />
+          </StackPanel>
+          <Border x:Name="ShellModeNotice" Grid.Row="1" Style="{StaticResource ModeNotice}">
+            <DockPanel>
+              <Button DockPanel.Dock="Right" Content="使用增强模式" Click="UseEnhanced_Click" Margin="18,0,0,0" VerticalAlignment="Center" />
+              <TextBlock Text="经典模式保留系统项目的原有顺序。切换到增强模式后，可以设置直接显示或隐藏。" TextWrapping="Wrap" LineHeight="21" VerticalAlignment="Center" />
+            </DockPanel>
+          </Border>
+          <Border x:Name="ShellListCard" Grid.Row="2" Style="{StaticResource ListCard}">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+              </Grid.RowDefinitions>
+              <DockPanel Margin="18,16">
+                <Button DockPanel.Dock="Right" Content="更新列表" Click="RefreshShell_Click" Margin="16,0,0,0" ToolTip="显示最近一次右键菜单中的项目，保留尚未保存的勾选。" />
+                <TextBlock x:Name="ShellContextText" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+              </DockPanel>
           <DataGrid x:Name="ShellGrid" Grid.Row="1">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="动作" Binding="{Binding Title}" IsReadOnly="True" Width="*" />
-              <DataGridTemplateColumn Header="一级显示" Width="100">
+              <DataGridTemplateColumn Header="项目名称" IsReadOnly="True" Width="*">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate>
-                    <CheckBox IsChecked="{Binding Pinned, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" Margin="0" />
+                    <StackPanel VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Title}" Style="{StaticResource TableText}" />
+                      <TextBlock Text="{Binding Group}" FontSize="11" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Group}">
+                        <TextBlock.Style>
+                          <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding Group}" Value="">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </TextBlock.Style>
+                      </TextBlock>
+                    </StackPanel>
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTemplateColumn Header="隐藏" Width="70">
+              <DataGridTemplateColumn Header="直接显示" Width="92" HeaderStyle="{StaticResource CenteredHeader}">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate>
-                    <CheckBox IsChecked="{Binding Hidden, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" Margin="0" />
+                    <CheckBox IsChecked="{Binding Pinned, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource TableCheck}" AutomationProperties.Name="{Binding Title, StringFormat=直接显示：{0}}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTemplateColumn Header="隐藏" Width="80" HeaderStyle="{StaticResource CenteredHeader}">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <CheckBox IsChecked="{Binding Hidden, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource TableCheck}" AutomationProperties.Name="{Binding Title, StringFormat=隐藏：{0}}" />
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
             </DataGrid.Columns>
           </DataGrid>
-          <TextBlock Grid.Row="2" Text="先在文件上呼出一次 BetterCM，再打开本页查看。无文字的自绘菜单项及部分仅支持 Win11 新菜单的扩展可能无法导入。" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,12,0,0" FontSize="12" />
+              <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" IsHitTestVisible="{Binding IsVisible, ElementName=ShellEmptyState}">
+              <StackPanel x:Name="ShellEmptyState">
+                <StackPanel.Style>
+                  <Style TargetType="StackPanel" BasedOn="{StaticResource EmptyState}">
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding HasItems, ElementName=ShellGrid}" Value="False">
+                        <Setter Property="Visibility" Value="Visible" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </StackPanel.Style>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                  <TextBlock Text="&#xE8A7;" FontFamily="Segoe Fluent Icons" FontSize="20" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                  <TextBlock Text="先打开一次右键菜单" Style="{StaticResource EmptyTitle}" Margin="0" />
+                </StackPanel>
+                <TextBlock Text="在文件、文件夹或桌面上右键，再回到这里查看那次菜单的项目。" Style="{StaticResource SettingsHint}" TextAlignment="Center" LineHeight="19" Margin="0,10,0,0" />
+              </StackPanel>
+              </ScrollViewer>
+            </Grid>
+          </Border>
+          <TextBlock Grid.Row="3" Text="列表随右键目标变化。“直接显示”放在菜单第一层；“隐藏”只影响 BetterCM，不会卸载对应程序。" Style="{StaticResource SettingsHint}" Margin="0,14,0,0" />
         </Grid>
       </TabItem>
       <TabItem Header="诊断">
-        <StackPanel>
-          <TextBlock Text="最近一次捕获的上下文" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,12" />
-          <TextBox x:Name="DiagnosticsText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="170" VerticalScrollBarVisibility="Auto" />
-          <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
-            <Button Content="预览菜单" Click="Preview_Click" Margin="0,0,8,0" />
-            <Button Content="打开用户配置" Click="OpenConfig_Click" Margin="0,0,8,0" />
-            <Button Content="打开日志目录" Click="OpenLogs_Click" />
+        <Grid Margin="4,0,8,0">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+          <StackPanel>
+            <TextBlock Text="诊断" Style="{StaticResource PageTitle}" />
+            <TextBlock Text="菜单显示不对或操作没有反应时，可以在这里查看最近一次识别结果。" Style="{StaticResource PageDescription}" />
           </StackPanel>
-          <TextBlock Text="诊断保留上一次捕获结果；点击设置界面不会把目标替换为 BetterCM 自己。快捷键冲突会在常规页显示。" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,18,0,0" />
-        </StackPanel>
+          <TextBox x:Name="DiagnosticsText" Grid.Row="1" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Padding="18" />
+          <StackPanel Grid.Row="2" Margin="0,16,0,0">
+          <WrapPanel>
+            <Button Content="预览菜单" Click="Preview_Click" Margin="0,0,8,0" />
+            <Button Content="打开配置文件" Click="OpenConfig_Click" Margin="0,0,8,0" />
+            <Button Content="打开日志目录" Click="OpenLogs_Click" />
+          </WrapPanel>
+          <TextBlock Text="这里保留最近一次右键的结果。快捷键是否可用，请查看“常规”页。" Style="{StaticResource SettingsHint}" />
+          </StackPanel>
+        </Grid>
       </TabItem>
     </TabControl>
-    <Grid Grid.Row="2" Margin="0,20,0,0">
+    <Grid Grid.Row="2" Margin="0,22,0,0">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*" />
         <ColumnDefinition Width="Auto" />
         <ColumnDefinition Width="Auto" />
       </Grid.ColumnDefinitions>
-      <TextBlock x:Name="SaveStatus" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,10,0" />
-      <StackPanel Grid.Column="1" Orientation="Horizontal">
-        <Button Content="还原为已保存" Click="RestoreSaved_Click" Margin="0,0,10,0" />
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
+      <TextBlock x:Name="SaveStatus" Grid.ColumnSpan="3" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,12" />
+      <TextBlock Grid.Row="1" Text="关闭窗口后仍会在托盘运行" Foreground="{DynamicResource MutedBrush}" FontSize="12" VerticalAlignment="Center" />
+      <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
+        <Button x:Name="RestoreButton" Content="撤销未保存的修改" Click="RestoreSaved_Click" Margin="0,0,10,0" />
         <Button x:Name="SaveButton" Content="保存设置" Click="Save_Click" BorderBrush="{DynamicResource AccentBrush}" Margin="0,0,10,0" />
       </StackPanel>
-      <Button Grid.Column="2" Content="关闭到托盘" Click="Hide_Click" />
+      <Button Grid.Row="1" Grid.Column="2" Content="关闭窗口" Click="Hide_Click" />
     </Grid>
   </Grid>
 </Window>

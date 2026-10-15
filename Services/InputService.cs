@@ -72,7 +72,8 @@ public sealed class InputService : IDisposable
         var fallback = key != Hotkey.Parse("Ctrl+Shift+X") && NativeMethods.RegisterHotKey(Handle, 2, NativeMethods.MOD_NOREPEAT | NativeMethods.MOD_CONTROL | NativeMethods.MOD_SHIFT, 'X');
         _enabled = replace;
         if (_mouseThread == null) StartMouseThread();
-        Status = $"{hotkey}：{(primary ? "已启用" : "被占用")}；备用热键：{(fallback ? "已启用" : "未启用")}；右键：{(replace && _mouseHook != 0 ? "已接管桌面与资源管理器" : replace ? "接管失败" : "系统原生")}";
+        string fallbackStatus = key == Hotkey.Parse("Ctrl+Shift+X") ? "与主快捷键相同" : fallback ? "可用" : "不可用";
+        Status = $"快捷键 {hotkey}：{(primary ? "可用" : "已被占用")}\n备用快捷键 Ctrl+Shift+X：{fallbackStatus}\n右键菜单：{(replace && _mouseHook != 0 ? "使用 BetterCM" : replace ? "启用失败，请尝试重启 BetterCM" : "使用 Windows 菜单")}";
     }
     private void StartMouseThread()
     {
