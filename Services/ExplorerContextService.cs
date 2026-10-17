@@ -96,6 +96,7 @@ public sealed class ExplorerContextService : IDisposable
             }
         }
         catch (IOException) { }
+        catch (Exception ex) { AppLog.Write("context-host", ex); }
     }
     private static (string[] Names, string Value, bool Pinned)? SelectClickedItem(nint window, NativeMethods.POINT point, bool navigation)
     {

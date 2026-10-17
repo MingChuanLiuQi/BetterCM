@@ -36,7 +36,7 @@ public partial class MainWindow : Window
     private string _loadedConfig = "";
     private bool _configurationConflict;
     private bool _validHotkey;
-    public MainWindow(App app) { _app = app; InitializeComponent(); Title = AppInfo.DisplayName + " · 设置"; ThemeService.Attach(this); BuiltinGrid.ItemsSource = _actions; CustomGrid.ItemsSource = _custom; ShellGrid.ItemsSource = _shell; RefreshSettings(); }
+    public MainWindow(App app) { _app = app; InitializeComponent(); SettingsWindowSizing.Attach(this); Title = AppInfo.DisplayName + " · 设置"; ThemeService.Attach(this); BuiltinGrid.ItemsSource = _actions; CustomGrid.ItemsSource = _custom; ShellGrid.ItemsSource = _shell; RefreshSettings(); }
     public void RefreshSettings()
     {
         var config = _app.Config.Clone();
@@ -60,7 +60,7 @@ public partial class MainWindow : Window
         }
         _custom.Clear(); foreach (var custom in config.CustomActions) _custom.Add(custom);
         _shellEdits.Clear(); RefreshShellItems();
-        SaveButton.IsEnabled = _validHotkey;
+        RefreshConfigurationSafety();
         RefreshDiagnostics(); SaveStatus.Text = "修改后点击“保存设置”生效。";
     }
     public void RefreshDiagnostics()
@@ -126,7 +126,26 @@ public partial class MainWindow : Window
         _configurationConflict = _loadedConfig != ConfigJson.Snapshot(_app.Config);
         if (_configurationConflict)
             SaveStatus.Text = "配置已在外部更新。你的编辑仍然保留；请点击“撤销未保存的修改”加载最新设置，再继续编辑。";
-        SaveButton.IsEnabled = !_configurationConflict && _validHotkey;
+        RefreshConfigurationSafety();
+    }
+    private void RefreshConfigurationSafety()
+    {
+        SaveButton.IsEnabled = !_configurationConflict && _validHotkey && _app.ConfigurationError == null;
+        ConfigurationNotice.Visibility = _app.ConfigurationError == null ? Visibility.Collapsed : Visibility.Visible;
+        ConfigurationError.Text = _app.ConfigurationError ?? "";
+        RecoverConfigurationButton.IsEnabled = _app.HasConfigurationBackup;
+    }
+    private void RetryConfiguration_Click(object sender, RoutedEventArgs e)
+    {
+        if (_app.ReloadConfiguration()) RefreshSettings();
+        else RefreshConfigurationSafety();
+    }
+    private void RecoverConfiguration_Click(object sender, RoutedEventArgs e)
+    {
+        var error = _app.RestoreConfigurationBackup();
+        if (error == null) RefreshSettings();
+        RefreshConfigurationSafety();
+        SaveStatus.Text = error ?? "已恢复上一份配置。损坏的原文件已另外保留。";
     }
     private void Classic_Changed(object sender, RoutedEventArgs e)
         => RefreshModeAvailability();
@@ -181,7 +200,7 @@ public partial class MainWindow : Window
         HotkeyValidation.Text = error ?? "格式可用。保存时会检查是否与其他程序冲突。";
         HotkeyValidation.SetResourceReference(TextBlock.ForegroundProperty, error == null ? "MutedBrush" : "ErrorBrush");
         HotkeyText.SetResourceReference(Control.BorderBrushProperty, error == null ? "BorderBrush" : "ErrorBrush");
-        SaveButton.IsEnabled = error == null && !_configurationConflict;
+        RefreshConfigurationSafety();
     }
     private void RestoreSaved_Click(object sender, RoutedEventArgs e)
     {

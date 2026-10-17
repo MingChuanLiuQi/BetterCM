@@ -129,60 +129,74 @@ public partial class ContextMenuWindow : Window
     }
     public int ShowAt(int x, int y, SelectedContext context, AppConfig config, List<MenuAction> toolbar, List<MenuAction> primary, List<MenuAction> more, bool activate = true, List<MenuAction>? shell = null, string? shellError = null, IReadOnlyList<ShellMenuNode>? nativeMenu = null, Func<Task>? nativeRefresh = null, Func<int?, Task<NativeMenuPage>>? nativeLoad = null)
     {
-        ObservationChanged?.Invoke(null);
-        if (IsVisible) Hide();
-        CloseSubmenu();
-        CancelExpansion();
-        _opening = true; _activationSucceeded = false;
-        _moreHover.Cancel(); _animator.Reset(); _closing = false; IsHitTestVisible = Surface.IsHitTestVisible = true;
-        _generation++; _shownAt = (uint)Environment.TickCount; _x = x; _y = y; _config = config; _dismissReason = "本次尚未关闭";
-        _nativeState.Reset(nativeMenu, []);
-        _nativeRefresh = nativeRefresh;
-        _nativeLoad = nativeLoad; _loadingAll = null; _loadingGroups.Clear(); _activeGroupLoad = null;
-        _toolbar = toolbar; _primary = primary; _more = more; _shell = []; _expanded = nativeMenu != null || !config.ShowMoreItems || config.CompactMenu;
-        ApplyMetrics(config);
-        TargetDetail.Visibility = config.CompactMenu ? Visibility.Collapsed : Visibility.Visible;
-        _appliedSearch = ""; Search.Text = ""; Search.Visibility = _expanded && !config.CompactMenu ? Visibility.Visible : Visibility.Collapsed; More.Visibility = _expanded ? Visibility.Collapsed : Visibility.Visible;
-        ShellStatus.Text = shellError ?? "";
-        ShellStatus.Visibility = _expanded && ShellStatus.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        TargetName.Text = context.Items.Count > 1 ? $"已选中 {context.Items.Count} 个项目" : context.HasTarget ? context.PrimaryName : "未识别到文件或文件夹";
-        TargetDetail.Text = context.Source.Split('·')[0].Trim(); TargetName.ToolTip = context.PrimaryPath;
-        TargetDetail.Visibility = config.ShowFileDetails && !config.CompactMenu ? Visibility.Visible : Visibility.Collapsed;
-        TargetIcon.Source = null;
-        Toolbar.ItemsSource = toolbar; Toolbar.Visibility = toolbar.Count > 0 && !config.CompactMenu ? Visibility.Visible : Visibility.Collapsed;
-        if (shell != null) ApplyShell(shell, shellError);
-        Rebuild();
-        var handle = new WindowInteropHelper(this).EnsureHandle();
-        if (_contentSource != null && _contentSource.RootVisual == null) _contentSource.RootVisual = Surface;
-        NativeMethods.SetWindowPos(handle, 0, x, y, 0, 0, NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-        var monitor = NativeMethods.MonitorFromPoint(new() { X = x, Y = y }, NativeMethods.MONITOR_DEFAULTTONEAREST);
-        var info = new NativeMethods.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MONITORINFO>() };
-        NativeMethods.GetMonitorInfo(monitor, ref info); _work = info.rcWork;
-        _scale = Math.Max(1, NativeMethods.GetDpiForWindow(handle) / 96.0);
-        MaxHeight = Math.Max(1, Math.Min(640, (_work.Bottom - _work.Top - 12) / _scale));
-        Surface.MaxHeight = MaxHeight;
-        ShellStatus.MaxHeight = MaxHeight / 3;
-        Height = MeasureContent();
-        ResizeNative(Height);
-        ShowActivated = activate;
-        // Prepare the visual state and final HWND/content size before the first visible frame.
-        bool held = SurfaceAnimator.OpeningAnimated(config) && _firstFrame.Hold(handle);
-        if (held) _animator.PrepareOpening(config); else _animator.Play(config, true);
-        ShowActivated = !held && activate;
-        Show(); UpdateLayout();
-        _shownAt = (uint)Environment.TickCount; _opening = false;
-        ActionsList.SelectedIndex = -1; PublishBounds();
-        int shownGeneration = _generation;
-        void BeginPresentation()
+        try
         {
-            if (_generation != shownGeneration || !IsOpen) return;
-            if (held) _animator.Play(config, true);
-            ActivateContent(activate, context.SourceWindow, handle);
-            PublishBounds();
+            ObservationChanged?.Invoke(null);
+            if (IsVisible) Hide();
+            CloseSubmenu();
+            CancelExpansion();
+            _opening = true; _activationSucceeded = false;
+            _moreHover.Cancel(); _animator.Reset(); _closing = false; IsHitTestVisible = Surface.IsHitTestVisible = true;
+            _generation++; _shownAt = (uint)Environment.TickCount; _x = x; _y = y; _config = config; _dismissReason = "本次尚未关闭";
+            _nativeState.Reset(nativeMenu, []);
+            _nativeRefresh = nativeRefresh;
+            _nativeLoad = nativeLoad; _loadingAll = null; _loadingGroups.Clear(); _activeGroupLoad = null;
+            _toolbar = toolbar; _primary = primary; _more = more; _shell = []; _expanded = nativeMenu != null || !config.ShowMoreItems || config.CompactMenu;
+            ApplyMetrics(config);
+            TargetDetail.Visibility = config.CompactMenu ? Visibility.Collapsed : Visibility.Visible;
+            _appliedSearch = ""; Search.Text = ""; Search.Visibility = _expanded && !config.CompactMenu ? Visibility.Visible : Visibility.Collapsed; More.Visibility = _expanded ? Visibility.Collapsed : Visibility.Visible;
+            ShellStatus.Text = shellError ?? "";
+            ShellStatus.Visibility = _expanded && ShellStatus.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            TargetName.Text = context.Items.Count > 1 ? $"已选中 {context.Items.Count} 个项目" : context.HasTarget ? context.PrimaryName : "未识别到文件或文件夹";
+            TargetDetail.Text = context.Source.Split('·')[0].Trim(); TargetName.ToolTip = context.PrimaryPath;
+            TargetDetail.Visibility = config.ShowFileDetails && !config.CompactMenu ? Visibility.Visible : Visibility.Collapsed;
+            TargetIcon.Source = null;
+            Toolbar.ItemsSource = toolbar; Toolbar.Visibility = toolbar.Count > 0 && !config.CompactMenu ? Visibility.Visible : Visibility.Collapsed;
+            if (shell != null) ApplyShell(shell, shellError);
+            Rebuild();
+            var handle = new WindowInteropHelper(this).EnsureHandle();
+            if (_contentSource != null && _contentSource.RootVisual == null) _contentSource.RootVisual = Surface;
+            NativeMethods.SetWindowPos(handle, 0, x, y, 0, 0, NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+            var monitor = NativeMethods.MonitorFromPoint(new() { X = x, Y = y }, NativeMethods.MONITOR_DEFAULTTONEAREST);
+            var info = new NativeMethods.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MONITORINFO>() };
+            NativeMethods.GetMonitorInfo(monitor, ref info); _work = info.rcWork;
+            _scale = Math.Max(1, NativeMethods.GetDpiForWindow(handle) / 96.0);
+            MaxHeight = Math.Max(1, Math.Min(640, (_work.Bottom - _work.Top - 12) / _scale));
+            Surface.MaxHeight = MaxHeight;
+            ShellStatus.MaxHeight = MaxHeight / 3;
+            Height = MeasureContent();
+            ResizeNative(Height);
+            ShowActivated = activate;
+            // Prepare the visual state and final HWND/content size before the first visible frame.
+            bool held = SurfaceAnimator.OpeningAnimated(config) && _firstFrame.Hold(handle);
+            if (held) _animator.PrepareOpening(config); else _animator.Play(config, true);
+            ShowActivated = !held && activate;
+            Show(); UpdateLayout();
+            _shownAt = (uint)Environment.TickCount; _opening = false;
+            ActionsList.SelectedIndex = -1; PublishBounds();
+            int shownGeneration = _generation;
+            void BeginPresentation()
+            {
+                if (_generation != shownGeneration || !IsOpen) return;
+                if (held) _animator.Play(config, true);
+                ActivateContent(activate, context.SourceWindow, handle);
+                PublishBounds();
+            }
+            if (held) _firstFrame.Present(Dispatcher, BeginPresentation); else BeginPresentation();
+            return _generation;
         }
-        if (held) _firstFrame.Present(Dispatcher, BeginPresentation); else BeginPresentation();
-        return _generation;
+        catch
+        {
+            // A failed layout, observer, or HWND presentation must not leave a
+            // cloaked/half-open menu behind or prevent the next right-click.
+            foreach (Action cleanup in new Action[] { _firstFrame.Cancel, CancelExpansionAfterFailure, _moreHover.Cancel, _animator.Reset, CloseSubmenu, Hide })
+                try { cleanup(); } catch (Exception ex) { AppLog.Write("menu-presentation-cleanup", ex); }
+            _closing = false; _activationSucceeded = false; IsHitTestVisible = Surface.IsHitTestVisible = true;
+            throw;
+        }
+        finally { _opening = false; }
     }
+    private void CancelExpansionAfterFailure() => CancelExpansion("呈现失败");
     private void ActivateContent(bool activate, nint sourceWindow, nint handle)
     {
         if (!activate) return;

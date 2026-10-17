@@ -19,6 +19,7 @@ public sealed class CustomActionWindow : Window
         ThemeService.Attach(this);
         Title = original.Title.Length == 0 ? "添加自定义动作" : "编辑自定义动作";
         Width = 640; Height = Math.Min(740, SystemParameters.WorkArea.Height); MinWidth = 560; MinHeight = 540; WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        SettingsWindowSizing.Attach(this);
         var layout = new Grid { Margin = new Thickness(28) };
         layout.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new() { Height = GridLength.Auto });

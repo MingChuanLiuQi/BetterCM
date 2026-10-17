@@ -18,10 +18,19 @@
     <Setter Property="CornerRadius" Value="8"/>
     <Setter Property="Padding" Value="20"/>
   </Style>
+  <Style x:Key="KeyboardFocusOutline" TargetType="Control">
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Control">
+          <Border BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2" CornerRadius="4" Margin="-2" />
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
   <Style TargetType="Slider">
     <Setter Property="Minimum" Value="0"/><Setter Property="Maximum" Value="100"/>
     <Setter Property="MinHeight" Value="26"/><Setter Property="VerticalAlignment" Value="Center"/>
-    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+    <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusOutline}"/>
     <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Slider">
       <Grid Margin="0,0,10,0">
         <p:Track x:Name="PART_Track" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" Value="{TemplateBinding Value}" Orientation="Horizontal" IsDirectionReversed="False">
@@ -248,6 +257,7 @@
     </Style.Triggers>
   </Style>
   <Style TargetType="ComboBox">
+    <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusOutline}" />
     <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
     <Setter Property="Background" Value="{DynamicResource FieldBg}" />
     <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
@@ -351,7 +361,9 @@
               <ColumnDefinition Width="156" />
               <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <TabPanel IsItemsHost="True" Margin="0,0,16,0" />
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,0,16,0" Focusable="False">
+              <TabPanel IsItemsHost="True" />
+            </ScrollViewer>
             <ContentPresenter x:Name="PART_SelectedContentHost" Grid.Column="1" ContentSource="SelectedContent" Margin="8,0,0,0" />
           </Grid>
         </ControlTemplate>
@@ -359,6 +371,7 @@
     </Setter>
   </Style>
   <Style TargetType="TabItem">
+    <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusOutline}" />
     <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
     <Setter Property="Template">
       <Setter.Value>

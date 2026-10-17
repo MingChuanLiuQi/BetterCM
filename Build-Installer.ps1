@@ -4,7 +4,12 @@ $projectRoot = $PSScriptRoot
 [xml]$project = Get-Content -LiteralPath (Join-Path $projectRoot 'BetterCM.csproj') -Raw
 $version = [string]$project.Project.PropertyGroup.Version
 if (-not (Test-Path -LiteralPath $Compiler)) { throw 'Install Inno Setup 6.5+ or supply -Compiler with ISCC.exe path.' }
+$sourceCommit = & git -C $projectRoot rev-parse HEAD
+if ($LASTEXITCODE -ne 0 -or (& git -C $projectRoot status --porcelain)) { throw 'Installer requires a committed, clean source tree.' }
 & (Join-Path $projectRoot 'verify.ps1')
+if ((& git -C $projectRoot rev-parse HEAD) -ne $sourceCommit -or (& git -C $projectRoot status --porcelain)) { throw 'Source tree changed during verification.' }
+$published = Get-Content -LiteralPath (Join-Path $projectRoot 'artifacts\qa\published-tests.json') -Raw | ConvertFrom-Json
+if ($published.Build -ne ($version + '+' + $sourceCommit)) { throw 'Published assembly does not identify the verified source commit.' }
 $stagingPath = Join-Path $projectRoot ('artifacts\installer-build-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $stagingPath -Force | Out-Null
 $buildCompleted = $false
@@ -24,7 +29,7 @@ Write-Output ("SHA256: " + $hash.Hash)
     [pscustomobject]@{
         Version = $version
         Build = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $payloadPath 'BetterCM.exe')).ProductVersion
-        SourceCommit = (& git -C $projectRoot rev-parse HEAD)
+        SourceCommit = $sourceCommit
         InstallerSHA256 = $hash.Hash
         Files = $payloadFiles
     } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $projectRoot ('artifacts\qa\payload-' + $version + '.json')) -Encoding utf8

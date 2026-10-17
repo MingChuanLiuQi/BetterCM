@@ -154,7 +154,11 @@ public sealed class ShellViewBinding : IDisposable
         Marshal.ThrowExceptionForHR(Method<SelectItem>(_view, 14)(_view, ILFindLastID(absolutePidl), edit ? 0x1Fu : 0x1Du));
     }
     internal int QueryNativeService(ref Guid service, ref Guid iid, out nint result)
-        => _services!.QueryService(ref service, ref iid, out result);
+    {
+        var services = Volatile.Read(ref _services);
+        if (services != null) return services.QueryService(ref service, ref iid, out result);
+        result = 0; return unchecked((int)0x800401FD); // CO_E_OBJNOTCONNECTED after view disposal.
+    }
     public void ValidateLocation()
     {
         ValidateActiveView();

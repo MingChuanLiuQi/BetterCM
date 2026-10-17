@@ -221,6 +221,16 @@ internal static class NativeUiChecks
             searchBox.Text = "查询夹具"; cleanHeight = window.Height;
             cancelledSearch.SetException(new OperationCanceledException("搜索请求已结束")); await Task.Delay(35);
             check("被取代的搜索补全不显示错误或改写菜单", status.Visibility == Visibility.Collapsed && Math.Abs(window.Height - cleanHeight) < .01 && window.VisibleRows.Count == 0, null);
+            window.CloseMenu("异常呈现回归准备", true);
+            Action<MenuObservation?> brokenObserver = state => { if (state != null) throw new IOException("呈现通知异常夹具"); };
+            window.ObservationChanged += brokenObserver;
+            bool presentationFailed = false;
+            try { window.ShowAt(26, 42, new(), noAnimation, [], [], [], false, commands, nativeMenu: native); }
+            catch (IOException) { presentationFailed = true; }
+            finally { window.ObservationChanged -= brokenObserver; }
+            check("呈现中途异常清理窗口且不留下半开或首帧遮蔽状态", presentationFailed && !window.IsOpen && !window.PresentationPending, null);
+            window.ShowAt(26, 42, new(), noAnimation, [], [], [], false, commands, nativeMenu: native);
+            check("呈现失败后下一次菜单可正常重用并显示原生项目", window.IsOpen && window.VisibleRows.Count == 3 && window.ContentCoversWindow, null);
         }
         finally { window.CloseMenu("清理原生回归", true); window.Close(); ThemeService.Apply("system"); }
     }

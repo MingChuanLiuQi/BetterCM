@@ -53,4 +53,6 @@ if (-not $qaProcess.WaitForExit(60000)) { $qaProcess.Kill(); throw 'UI/Shell che
 if ($qaProcess.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $qaReport)) { throw 'UI/Shell checks failed.' }
 $qaResult = Get-Content -LiteralPath $qaReport -Raw | ConvertFrom-Json
 if (-not $qaResult.Passed -or $qaResult.Version -ne $version) { throw 'UI/Shell report failed or version mismatched.' }
+$expectedChecks = Get-Content -LiteralPath (Join-Path $projectRoot 'Installer\Expected-Checks.json') -Raw | ConvertFrom-Json
+if (($qaResult.Results.Name | Sort-Object -CaseSensitive | ConvertTo-Json -Compress) -cne ($expectedChecks.UiShell | Sort-Object -CaseSensitive | ConvertTo-Json -Compress)) { throw 'UI/Shell check names differ from reviewed expected suite.' }
 Write-Output ('Verified BetterCM ' + $version + '; UI/Shell checks: ' + $qaResult.Results.Count)

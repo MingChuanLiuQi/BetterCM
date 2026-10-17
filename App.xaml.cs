@@ -49,8 +49,12 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        _helperMode = AppInstance.IsHelper(e.Args);
+        DispatcherUnhandledException += DispatcherFailure;
+        TaskScheduler.UnobservedTaskException += UnobservedFailure;
         try
         {
+            if (_helperMode && e.Args.Length < 2) throw new ArgumentException("辅助宿主缺少管道参数。");
             if (e.Args.Length >= 3 && e.Args[0] == "--verb-probe")
             {
                 await File.WriteAllTextAsync(e.Args[1] + ".tmp", System.Text.Json.JsonSerializer.Serialize(new { Version = AppInfo.Version, Arguments = e.Args.Skip(2).ToArray(), WorkingDirectory = Environment.CurrentDirectory }));
@@ -67,16 +71,12 @@ public partial class App : Application
             if (e.Args.Contains("--self-test")) { var report = e.Args.ElementAtOrDefault(Array.IndexOf(e.Args, "--self-test") + 1); Shutdown(await SelfTests.RunAsync(report) ? 0 : 1); return; }
             if (e.Args.Contains("--input-check")) { await InteractionChecks.RunAsync(e.Args.ElementAtOrDefault(Array.IndexOf(e.Args, "--input-check") + 1)); Shutdown(); return; }
             if (e.Args.Length >= 2 && e.Args[0] == "--cascade-input-check") { await CascadeInteractionChecks.RunAsync(e.Args[1]); Shutdown(); return; }
-            if (e.Args.Contains("--shutdown")) { try { using var signal = EventWaitHandle.OpenExisting(@"Local\" + InstanceName + ".Exit"); signal.Set(); } catch (WaitHandleCannotBeOpenedException) { } Shutdown(); return; }
+            if (e.Args.Contains("--shutdown")) { Shutdown(await AppInstance.StopAsync(InstanceName, TimeSpan.FromSeconds(10)) ? 0 : 1); return; }
             if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)) { MessageBox.Show(AppInfo.DisplayName + " 需要 Windows 11。"); Shutdown(); return; }
             _mutex = new Mutex(true, @"Local\" + InstanceName + ".App", out bool first);
             if (!first)
             {
-                for (int attempt = 0; attempt < 20; attempt++)
-                {
-                    try { using var wake = EventWaitHandle.OpenExisting(@"Local\" + InstanceName + ".Wake"); wake.Set(); break; }
-                    catch (WaitHandleCannotBeOpenedException) when (attempt < 19) { await Task.Delay(50); }
-                }
+                await AppInstance.WakeAsync(InstanceName);
                 Shutdown(); return;
             }
             _wake = new(false, EventResetMode.AutoReset, @"Local\" + InstanceName + ".Wake");
@@ -103,12 +103,10 @@ public partial class App : Application
                 else _menu.Dismiss(generation, reason);
             };
             SystemEvents.UserPreferenceChanged += WindowsPreferenceChanged;
-            _settings = new(this); MainWindow = _settings;
-            _menu.ObservationChanged += _ => { if (_settings.IsVisible) _settings.RefreshDiagnostics(); if (!_menu.IsExpanding) ObserveQa(); };
+            _menu.ObservationChanged += _ => { if (_settings?.IsVisible == true) _settings.RefreshDiagnostics(); if (!_menu.IsExpanding) ObserveQa(); };
             CreateTray(); ReportInputStatus(); WatchConfiguration();
             _ = Task.WhenAll(_contexts.PrepareAsync(), _shell.PrepareAsync());
             _ = Dispatcher.BeginInvoke(() => { if (!IsExiting) _menu.PreparePresentation(); }, DispatcherPriority.ContextIdle);
-            DispatcherUnhandledException += (_, args) => { AppLog.Write("dispatcher", args.Exception); Notify(args.Exception.Message, true); args.Handled = true; };
             if (!e.Args.Contains("--background")) ShowSettings();
             if (_store.LastError != null) Notify(_store.LastError, true);
             var previewIndex = Array.IndexOf(e.Args, "--preview-file");
@@ -124,7 +122,7 @@ public partial class App : Application
                 }, DispatcherPriority.ApplicationIdle);
             }
         }
-        catch (Exception ex) { AppLog.Write("startup", ex); MessageBox.Show(ex.Message, "BetterCM 启动失败"); Shutdown(1); }
+        catch (Exception ex) { AppLog.Write("startup", ex); if (!_helperMode) MessageBox.Show(ex.Message, "BetterCM 启动失败"); Shutdown(1); }
     }
     private void CreateTray()
     {
@@ -141,12 +139,14 @@ public partial class App : Application
     }
     public void ShowSettings()
     {
-        if (_settings == null || IsExiting) return;
+        if (IsExiting) return;
+        bool created = _settings == null;
+        if (created) { _settings = new(this); MainWindow = _settings; }
         _menuRequest++; _shellCancellation?.Cancel();
         _input?.WatchPreparation(null);
         _menu?.CloseMenu("打开设置");
         _appearance?.Restore();
-        if (!_settings.IsVisible) _settings.RefreshSettings();
+        if (!_settings!.IsVisible && !created) _settings.RefreshSettings();
         _settings.RefreshModeAvailability();
         _settings.Show();
         if (_settings.WindowState == WindowState.Minimized) _settings.WindowState = WindowState.Normal;
@@ -192,7 +192,8 @@ public partial class App : Application
         {
             if (trigger != _triggerGeneration || IsExiting) return;
             AppLog.Write("trigger", ex);
-            await ShowMenuAsync(request.X, request.Y, new() { SourceWindow = request.Window, Source = "上下文识别失败，请用 Shift+右键" });
+            try { await ShowMenuAsync(request.X, request.Y, new() { SourceWindow = request.Window, Source = "上下文识别失败，请用 Shift+右键" }); }
+            catch (Exception fallback) { AppLog.Write("trigger-fallback", fallback); ReportError("菜单暂时无法显示，请按住 Shift 再右键使用 Windows 菜单。"); }
         }
         finally { if (_captureCancellation == cancellation) _captureCancellation = null; cancellation.Dispose(); }
     }
@@ -306,13 +307,13 @@ public partial class App : Application
         }
         catch (Exception ex) { AppLog.Write("qa-observation", ex); }
     }
-    private async Task RunActionAsync(string id, SelectedContext ctx, Task<ShellResponse>? shellLoad = null) => await RunAsync(async (token, progress) => await _executor!.ExecuteAsync(id, ctx, token, progress, ShellCommandMap.IsNative(id) && shellLoad != null ? await shellLoad : null), id == "hash");
+    private async Task RunActionAsync(string id, SelectedContext ctx, Task<ShellResponse>? shellLoad = null) => await RunAsync(async (token, progress) => await _executor!.ExecuteAsync(id, ctx, token, progress, ShellCommandMap.IsNative(id) && shellLoad != null ? await shellLoad : null), id == "hash", !ShellCommandMap.IsNative(id));
     private async Task RunCustomAsync(CustomActionItem action, SelectedContext ctx) => await RunAsync(async (_, _) => { await _executor!.ExecuteCustomAsync(action, ctx); return null; });
-    private async Task RunShellAsync(string session, int command) => await RunAsync(async (_, _) => { var result = await _shell.InvokeAsync(session, command); if (!result.Success) throw new InvalidOperationException(result.Error); return null; });
-    private async Task RunAsync(Func<CancellationToken, IProgress<(double, string)>, Task<string?>> action, bool showProgress = false)
+    private async Task RunShellAsync(string session, int command) => await RunAsync(async (_, _) => { var result = await _shell.InvokeAsync(session, command); if (!result.Success) throw new InvalidOperationException(result.Error); return null; }, exclusive: false);
+    private async Task RunAsync(Func<CancellationToken, IProgress<(double, string)>, Task<string?>> action, bool showProgress = false, bool exclusive = true)
     {
-        if (_executing) { Notify("已有操作正在执行，请等待或取消"); return; }
-        _executing = true;
+        if (exclusive && _executing) { Notify("已有操作正在执行，请等待或取消"); return; }
+        if (exclusive) _executing = true;
         using var cancellation = new CancellationTokenSource();
         OperationWindow? operation = showProgress ? new(cancellation) : null;
         var progress = new Progress<(double, string)>(value => operation?.Report(value.Item1, value.Item2));
@@ -320,7 +321,7 @@ public partial class App : Application
         catch (OperationCanceledException) { Notify("操作已取消"); }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 1223) { Notify("管理员授权已取消"); }
         catch (Exception ex) { AppLog.Write("action", ex); Notify(ex.Message, true); }
-        finally { operation?.Close(); _executing = false; }
+        finally { operation?.Close(); if (exclusive) _executing = false; }
     }
     public void ToggleShellPin(string key)
     {
@@ -339,7 +340,7 @@ public partial class App : Application
         }
         catch (Exception ex) { AppLog.Write("settings", ex); return ex.Message; }
     }
-    private void ApplyInput() { _input?.Apply(Config.GlobalHotkey, Config.ReplaceExplorerMenu); ReportInputStatus(); }
+    private void ApplyInput() { _input?.Apply(Config.GlobalHotkey, Config.ReplaceExplorerMenu && !_interceptionPaused); ReportInputStatus(); }
     private void ReportInputStatus()
     {
         if (_input == null || _input.PrimaryHotkeyAvailable) { _lastInputFailure = null; return; }
@@ -351,7 +352,9 @@ public partial class App : Application
     private void WatchConfiguration()
     {
         _reload = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
-        _reload.Tick += (_, _) => { _reload.Stop(); if (_store.Load()) { try { ApplyInput(); ThemeService.Apply(Config.Theme, Config.Material); _settings?.NotifyConfigurationChanged(); } catch (Exception ex) { Notify(ex.Message, true); } } else Notify(_store.LastError!, true); };
+        _reload.Tick += (_, _) => { _reload.Stop(); try { if (!ReloadConfiguration()) ReportError(_store.LastError!); } catch (Exception ex) { ReportError(ex.Message); } };
+        try { Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!); }
+        catch (Exception ex) { AppLog.Write("config-watch", ex); return; }
         _watcher = new(Path.GetDirectoryName(ConfigPath)!, Path.GetFileName(ConfigPath)) { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName };
         FileSystemEventHandler changed = (_, _) => Dispatcher.BeginInvoke(() => { _reload.Stop(); _reload.Start(); });
         _watcher.Changed += changed; _watcher.Created += changed; _watcher.Renamed += (_, _) => Dispatcher.BeginInvoke(() => { _reload.Stop(); _reload.Start(); });
@@ -370,6 +373,7 @@ public partial class App : Application
     {
         IsExiting = true; _captureCancellation?.Cancel(); _shellCancellation?.Cancel(); _watcher?.Dispose(); _reload?.Stop(); _input?.Dispose(); _shell.Dispose(); _contexts.Dispose();
         SystemEvents.UserPreferenceChanged -= WindowsPreferenceChanged;
+        DispatcherUnhandledException -= DispatcherFailure; TaskScheduler.UnobservedTaskException -= UnobservedFailure;
         _wakeWait?.Unregister(null); _exitWait?.Unregister(null); _wake?.Dispose(); _exitSignal?.Dispose();
         if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
         if (_mutex != null) { try { _mutex.ReleaseMutex(); } catch (ApplicationException) { } _mutex.Dispose(); }

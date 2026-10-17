@@ -39,7 +39,7 @@ function Run-Checked([string]$Executable, [string[]]$Arguments, [int]$Timeout = 
     $processInfo.UseShellExecute = $false
     $processInfo.CreateNoWindow = $true
     foreach ($argument in $Arguments) { $processInfo.ArgumentList.Add($argument) }
-    if ($Isolate) { $processInfo.Environment['BETTERCM_DATA_DIR'] = $testAppData; $processInfo.Environment['DOTNET_ROOT'] = (Join-Path $qaFolder 'no-global-dotnet'); $processInfo.Environment['DOTNET_MULTILEVEL_LOOKUP'] = '0' }
+    if ($Isolate) { $processInfo.Environment['BETTERCM_DATA_DIR'] = $testAppData; $processInfo.Environment['BETTERCM_STARTUP_NAME'] = $startupName; $processInfo.Environment['DOTNET_ROOT'] = (Join-Path $qaFolder 'no-global-dotnet'); $processInfo.Environment['DOTNET_MULTILEVEL_LOOKUP'] = '0' }
     $process = [System.Diagnostics.Process]::Start($processInfo)
     if (-not $process.WaitForExit($Timeout)) { $process.Kill(); throw ('Process timed out: ' + [System.IO.Path]::GetFileName($Executable)) }
     if ($process.ExitCode -ne 0) { throw ('Process failed: ' + [System.IO.Path]::GetFileName($Executable) + ', exit ' + $process.ExitCode) }
@@ -66,12 +66,16 @@ try {
     Run-Checked $installedExe @('--self-test', $installedReport) 45000 $true
     $installedResults = Get-Content -LiteralPath $installedReport -Raw | ConvertFrom-Json
     $publishedResults = Get-Content -LiteralPath (Join-Path $qaFolder 'published-tests.json') -Raw | ConvertFrom-Json
-    Check ('安装目录可独立运行且 ' + $publishedResults.Results.Count + ' 项自检通过') ($installedResults.Passed -and $installedResults.Version -eq $version -and $publishedResults.Passed -and $publishedResults.Version -eq $version -and $installedResults.Results.Count -eq $publishedResults.Results.Count -and $installedResults.Results.Count -ge 60)
+    $expectedChecks = Get-Content -LiteralPath (Join-Path $projectRoot 'Installer\Expected-Checks.json') -Raw | ConvertFrom-Json
+    $installedNames = $installedResults.Results.Name | Sort-Object -CaseSensitive | ConvertTo-Json -Compress
+    $expectedNames = $expectedChecks.UiShell | Sort-Object -CaseSensitive | ConvertTo-Json -Compress
+    Check ('安装目录可独立运行且完整 ' + $expectedChecks.UiShell.Count + ' 项自检通过') ($installedResults.Passed -and $installedResults.Version -eq $version -and $publishedResults.Passed -and $publishedResults.Version -eq $version -and $installedResults.Build -eq $publishedResults.Build -and $installedNames -ceq $expectedNames -and $installedResults.Results.Count -eq $publishedResults.Results.Count)
     $backgroundInfo = [System.Diagnostics.ProcessStartInfo]::new($installedExe)
     $backgroundInfo.UseShellExecute = $false
     $backgroundInfo.CreateNoWindow = $true
     $backgroundInfo.ArgumentList.Add('--background')
     $backgroundInfo.Environment['BETTERCM_DATA_DIR'] = $testAppData
+    $backgroundInfo.Environment['BETTERCM_STARTUP_NAME'] = $startupName
     $background = [System.Diagnostics.Process]::Start($backgroundInfo)
     Start-Sleep -Seconds 2
     Check '后台启动进程持续运行并初始化用户配置' (-not $background.HasExited -and (Test-Path -LiteralPath (Join-Path $testAppData 'config.json')))

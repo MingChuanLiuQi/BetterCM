@@ -32,7 +32,7 @@ UninstallDisplayIcon={app}\BetterCM.exe
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-CloseApplications=yes
+CloseApplications=no
 RestartApplications=no
 SetupLogging=yes
 VersionInfoVersion={#AppVersion}.0
@@ -57,13 +57,25 @@ Filename: "{app}\BetterCM.exe"; Parameters: "--shutdown"; Flags: runhidden waitu
 [Code]
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  ResultCode: Integer;
+  ResultCode, Attempt: Integer;
 begin
   Result := '';
 #ifndef TestBuild
   if FileExists(ExpandConstant('{app}\BetterCM.exe')) then begin
-    Exec(ExpandConstant('{app}\BetterCM.exe'), '--shutdown', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    Sleep(700);
+    if not Exec(ExpandConstant('{app}\BetterCM.exe'), '--shutdown', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then begin
+      Result := '无法请求 BetterCM 退出。请从托盘退出后重试。';
+      Exit;
+    end;
+    if ResultCode <> 0 then begin
+      Result := 'BetterCM 尚未完成退出。请等待系统文件操作结束，再从托盘退出后重试。';
+      Exit;
+    end;
+    for Attempt := 1 to 100 do begin
+      if not CheckForMutexes('Local\BetterCM.App') then Break;
+      Sleep(100);
+    end;
+    if CheckForMutexes('Local\BetterCM.App') then
+      Result := 'BetterCM 尚在退出，请稍后重试。';
   end;
 #endif
 end;
@@ -71,7 +83,6 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then begin
     RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', '{#StartupName}');
-    Sleep(700);
   end;
 end;
 

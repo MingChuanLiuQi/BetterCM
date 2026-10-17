@@ -46,6 +46,12 @@ public static class SelfTests
             await ShellOperationChecks.RunAsync(fixture, Check);
             await ShellLaunchChecks.RunAsync(fixture, Check);
             await DeferredMenuChecks.RunAsync(fixture, Check);
+            foreach (string mode in new[] { "--shell-host", "--shell-test-host", "--context-host", "--context-test-host" })
+            {
+                using var malformed = BackgroundProcess.Start(Environment.ProcessPath!, mode);
+                await malformed.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                Check("缺少参数的辅助宿主静默失败并退出 " + mode, malformed.ExitCode == 1);
+            }
             using var bridge = new ShellBridge();
             var shell = await bridge.OpenAsync(single);
             Check("独立进程可读取真实 Shell 菜单", shell.Success && shell.Items?.Count > 0, shell.Error);

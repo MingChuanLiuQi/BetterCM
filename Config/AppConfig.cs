@@ -59,11 +59,18 @@ public sealed class ConfigStore
     public string FilePath { get; }
     public AppConfig Current { get; private set; } = new();
     public string? LastError { get; private set; }
+    public bool CanSave { get; private set; } = true;
+    public string BackupPath => FilePath + ".bak";
+    public string? InvalidCopyPath { get; private set; }
+    private string? _invalidHash;
+    private bool _hasDiskSnapshot;
+    private string? _diskText;
     public ConfigStore(string? filePath = null) => FilePath = filePath ?? Path.Combine(DataDirectory, "config.json");
     public bool Load()
     {
-        if (!File.Exists(FilePath))
+        if (!File.Exists(FilePath) && !Directory.Exists(FilePath))
         {
+            _hasDiskSnapshot = true; _diskText = null;
             var legacy = Path.Combine(AppContext.BaseDirectory, "config.json");
             if (File.Exists(legacy))
             {
@@ -72,29 +79,53 @@ public sealed class ConfigStore
                     Current = ConfigJson.Deserialize(File.ReadAllText(legacy)) ?? new();
                     Current.CustomActions.RemoveAll(x => (x.Executable is "code" or "wt.exe" or "notepad.exe") && (x.Arguments is "\"{path}\"" or "-d \"{dir}\""));
                 }
-                catch (Exception ex) { LastError = "默认配置读取失败：" + ex.Message; return false; }
+                catch (Exception ex) { CanSave = false; LastError = "默认配置读取失败，已暂停保存：" + ex.Message; return false; }
             }
+            CanSave = true;
             return Save(Current);
         }
+        string? original = null;
         try
         {
-            var next = ConfigJson.Deserialize(File.ReadAllText(FilePath)) ?? throw new InvalidDataException("配置为空");
+            original = File.ReadAllText(FilePath);
+            _hasDiskSnapshot = true; _diskText = original;
+            var next = ConfigJson.Deserialize(original) ?? throw new InvalidDataException("配置为空");
             Validate(next);
             Current = next;
-            LastError = null;
+            CanSave = true; LastError = null; InvalidCopyPath = null; _invalidHash = null;
             return true;
         }
-        catch (Exception ex) { LastError = "保留当前有效配置。配置读取失败：" + ex.Message; return false; }
+        catch (Exception ex)
+        {
+            CanSave = false;
+            string backupError = "";
+            if (original != null)
+            {
+                try
+                {
+                    string hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(original)));
+                    if (hash != _invalidHash)
+                    {
+                        string copy = FilePath + ".invalid-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff") + "-" + Guid.NewGuid().ToString("N");
+                        File.WriteAllText(copy, original); InvalidCopyPath = copy; _invalidHash = hash;
+                    }
+                }
+                catch (Exception copyError) { backupError = "；另存副本失败：" + copyError.Message; }
+            }
+            LastError = "配置读取失败，已暂停保存以保护原文件。请修复配置后重试，或恢复上次备份。" + ex.Message + backupError;
+            return false;
+        }
     }
     public bool Save(AppConfig next)
     {
-        var temporary = FilePath + ".tmp";
+        if (!CanSave) return false;
         try
         {
+            if (!_hasDiskSnapshot && File.Exists(FilePath) && !Load()) return false;
             Validate(next);
-            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(temporary, ConfigJson.Serialize(next));
-            File.Move(temporary, FilePath, true);
+            string text = ConfigJson.Serialize(next);
+            WriteAtomic(text, true);
+            _hasDiskSnapshot = true; _diskText = text;
             Current = next.Clone();
             LastError = null;
             return true;
@@ -103,16 +134,59 @@ public sealed class ConfigStore
     }
     internal void Restore(AppConfig previous, string? originalText)
     {
-        if (originalText == null) File.Delete(FilePath);
+        if (originalText == null)
+        {
+            if (File.Exists(FilePath) && File.ReadAllText(FilePath) != _diskText) throw new IOException("配置已在外部变化，未删除外部写入的文件。");
+            File.Delete(FilePath);
+        }
         else
         {
-            File.WriteAllText(FilePath + ".tmp", originalText);
-            File.Move(FilePath + ".tmp", FilePath, true);
+            WriteAtomic(originalText, false);
         }
+        _hasDiskSnapshot = true; _diskText = originalText;
         Current = previous.Clone(); LastError = null;
+    }
+    public bool RestoreBackup()
+    {
+        try
+        {
+            string text = File.ReadAllText(BackupPath);
+            var restored = ConfigJson.Deserialize(text) ?? throw new InvalidDataException("备份为空");
+            Validate(restored);
+            // Preserve an unreadable original before an explicit recovery, including
+            // recovery requested before Load has run.
+            if (File.Exists(FilePath) && !Load() && InvalidCopyPath == null)
+                throw new IOException("无法保留原配置副本，请先手动备份原文件。");
+            WriteAtomic(text, false);
+            _hasDiskSnapshot = true; _diskText = text;
+            Current = restored; CanSave = true; LastError = null; InvalidCopyPath = null; _invalidHash = null;
+            return true;
+        }
+        catch (Exception ex) { LastError = "配置备份恢复失败：" + ex.Message; return false; }
+    }
+    private void WriteAtomic(string text, bool backup)
+    {
+        string destination = Path.GetFullPath(FilePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        string temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                using (var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false), leaveOpen: true)) { writer.Write(text); writer.Flush(); }
+                stream.Flush(true);
+            }
+            string? actual = File.Exists(destination) ? File.ReadAllText(destination) : null;
+            if (_hasDiskSnapshot && actual != _diskText)
+                throw new IOException("配置文件已在外部变化，保存已取消。请重新读取后再编辑。");
+            if (File.Exists(destination)) File.Replace(temporary, destination, backup ? BackupPath : null);
+            else File.Move(temporary, destination);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
     public static void Validate(AppConfig config)
     {
+        if (config.SchemaVersion != 1) throw new InvalidDataException("此版本不支持该配置格式，请使用兼容的 BetterCM 版本。");
         BetterCM.Services.Hotkey.Parse(config.GlobalHotkey);
         if (config.Theme is not ("system" or "dark" or "light")) throw new InvalidDataException("主题应为 system、dark 或 light");
         if (config.Material is not ("mica" or "acrylic" or "solid")) throw new InvalidDataException("材质应为 mica、acrylic 或 solid");

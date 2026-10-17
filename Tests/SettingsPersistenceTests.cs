@@ -33,9 +33,14 @@ public class SettingsPersistenceTests
         string root = Path.Combine(Path.GetTempPath(), "BetterCM-settings-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
         try
         {
-            var store = new ConfigStore(root); bool touched = false;
-            var error = SettingsPersistence.Save(store, new(), true, () => new(null, RegistryValueKind.String), _ => touched = true, _ => touched = true);
+            string path = Path.Combine(root, "config.json");
+            var store = new ConfigStore(path); Assert.True(store.Save(new() { Theme = "dark" }));
+            using var locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            bool touched = false;
+            var error = SettingsPersistence.Save(store, new() { Theme = "light" }, true, () => new(null, RegistryValueKind.String), _ => touched = true, _ => touched = true);
             Assert.NotNull(error); Assert.False(touched);
+            Assert.Equal("dark", ConfigJson.Deserialize(File.ReadAllText(path))!.Theme);
+            Assert.Empty(Directory.GetFiles(root, "*.tmp"));
         }
         finally { Directory.Delete(root, true); }
     }

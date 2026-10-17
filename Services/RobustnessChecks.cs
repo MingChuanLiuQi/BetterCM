@@ -12,6 +12,19 @@ public static class RobustnessChecks
         void Check(string name, bool valid, string? detail = null) { results.Add(new { Name = name, Passed = valid, Detail = detail }); passed &= valid; }
         try
         {
+            using (var untimed = new ShellBridge(Timeout.InfiniteTimeSpan, true))
+            {
+                var pendingContext = new SelectedContext { CurrentDirectory = AppContext.BaseDirectory };
+                var initial = await untimed.OpenAsync(pendingContext); await untimed.PrepareNextAsync();
+                var longCommand = untimed.InvokeAsync(initial.Session!, 40);
+                await Task.Delay(100);
+                Check("无限等待策略不会把仍执行的系统动作报告为失败", !longCommand.IsCompleted);
+                var another = await untimed.OpenAsync(pendingContext);
+                Check("等待系统动作完成时仍可建立下一份菜单", another.Success);
+                Check("系统动作执行超过三十秒后仍返回真实成功结果", (await longCommand).Success);
+                var slowOpen = await untimed.OpenAsync(pendingContext with { ShellViewPath = "slow-open" });
+                Check("增强完整菜单读取超过六秒仍保留完整响应", slowOpen.Success);
+            }
             using (var overlap = new ShellBridge(TimeSpan.FromSeconds(5), true))
             {
                 var fixtureContext = new SelectedContext { CurrentDirectory = AppContext.BaseDirectory };

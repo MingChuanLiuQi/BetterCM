@@ -1,3 +1,7 @@
+# 1.7.0 配置与进程边界
+
+配置读取失败暂停保存，保留损坏副本；同目录唯一临时文件经磁盘刷新后原子替换，保留上次备份并检查外部变化。设置提供重新读取与备份恢复。后台按需创建设置窗口，窗口初始与最小尺寸受所在显示器工作区限制。未知界面异常暂停右键接管，helper 入口始终静默记录和退出。主实例退出以互斥体生命周期确认，安装器不强杀用户系统操作。发布要求干净源码，验证后的程序集标识与提交一致；完整 UI/Shell 检查名称清单由 Installer/Expected-Checks.json 审阅维护。
+
 # 1.6.0 设置呈现与编辑状态
 
 MainWindow 局部合并 Themes/SettingsControls.xaml；表格、独立勾选模板、空状态和页面样式不进入全局菜单资源。表格保留行虚拟化，统一单元格 Padding、横向 Stretch 及居中内容；纯勾选模板不预留通用 CheckBox 的文字区域。六页采用标题与短说明，增强功能在经典模式下解释原因并允许编辑切换，但保存之前不改变运行配置。
@@ -178,7 +182,7 @@ ShellMenuSession 通过 SHParseDisplayName、SHBindToParent、GetUIObjectOf 获�
 
 MenuComposer 负责呈现分组，MenuEntry 区分组、分隔线与命令行。原始 Shell 层级保留，额外合并 Git/打开方式、不同格式路径，并将压缩工具的根层校验和邮件动作按用途分组。MenuEntry.Children 保存下级项目树。每个分组的子菜单只展示该层，搜索仍直接查找全部叶子；展开不改变 Shell 会话、命令编号或执行委托。搜索直接查找全部叶子，固定项从分组移出，避免重复；同名第三方命令不会因标题相同被删除。仅合并已启用内建动作的明确原生等价项。
 
-ShellBridge 用仅当前用户可连接的命名管道交换 JSON，RequestId 逐请求关联，SessionId 限制命令身份。读取与排队均有 6 秒时限，调用有 30 秒时限。当前浏览连接保留 Shell COM 与 HMENU，并保留最多一个预热备用连接；invoke 独占原连接并把备用连接交给新 open。菜单重开不会排在旧 invoke 后面。读取取消可关闭只读宿主；invoke 发出后的超时、异常和 Dispose 只断开 IPC，绝不 Kill 执行宿主或其进程树。宿主在调用后写入失败/EOF 时释放菜单，并通过 ShellHostLifetime 保持 STA 消息循环，直到 Shell 线程/进程引用和可见窗口释放后退出。连接的 SemaphoreSlim 在所有在途请求 finally 释放后才 Dispose。原生标准按钮与原生叶子共用同一 Session/Command；IncludeShellActions 控制额外项目的显示，标准动作仍需读取 Shell 能力。
+ShellBridge 用仅当前用户可连接的命名管道交换 JSON，RequestId 逐请求关联，SessionId 限制命令身份。连接启动有 6 秒时限；连接建立后完整增强树读取为 20 秒，延迟根菜单和其他读取为 6 秒。生产系统动作不设统一等待上限，生命周期取消和连接失败仍可结束等待。当前浏览连接保留 Shell COM 与 HMENU，并保留最多一个预热备用连接；invoke 独占原连接并把备用连接交给新 open。菜单重开不会排在旧 invoke 后面。读取取消可关闭只读宿主；invoke 发出后的超时、异常和 Dispose 只断开 IPC，绝不 Kill 执行宿主或其进程树。宿主在调用后写入失败/EOF 时释放菜单，并通过 ShellHostLifetime 保持 STA 消息循环，直到 Shell 线程/进程引用和可见窗口释放后退出。连接的 SemaphoreSlim 在所有在途请求 finally 释放后才 Dispose。原生标准按钮与原生叶子共用同一 Session/Command；IncludeShellActions 控制额外项目的显示，标准动作仍需读取 Shell 能力。
 
 第三方扩展自身的行为仍受其实现影响。隔离保护主菜单的响应性，不构成所有扩展都能导入或执行的保证。
 
@@ -222,7 +226,7 @@ StartupService 使用 HKCU Run，保存带引号的当前可执行路径与 --ba
 
 Inno Setup 使用当前用户安装、Windows 11 最低版本、x64 包和固定 AppId。升级及卸载先发送 --shutdown。卸载清除启动项，保留用户配置和日志。版本号唯一来源是 BetterCM.csproj 的 Version，AppInfo 读取 AssemblyInformationalVersion；程序集、manifest、UI、报告和安装包均派生版本。安装包自带 .NET/WPF 与 Windows App SDK InteractiveExperiences/Base 的必要材质组件及许可文件。
 
-global.json 固定 SDK 10.0.401、rollForward=latestPatch。verify.ps1 把零警告构建、97 项无界面 xUnit 测试、自带运行时发布、真实 UI/Shell --self-test 连成失败即停止的验证链；Build-Installer.ps1 复用链后编译安装包。GitHub Actions 已配置同一流程，但本地工作区无 Git 远端，远端 CI 未运行。LogicChecks/RegressionFixtures 提供共享逻辑检查和临时文件夹具；Tests 项目不创建 Application、GUI 或 Shell 会话。--self-test 仅检查需 WPF/真实 Shell 的部分，失败返回非零退出码。MainWindow.xaml 已格式化为每个元素独立行，Win32 钩子、窗口样式、消息、DWM、Shell 标志使用命名常量。
+global.json 固定 SDK 10.0.401、rollForward=latestPatch。verify.ps1 把零警告构建、Tests 项目的无界面 xUnit 检查（实际数量见当前 QA）、自带运行时发布、真实 UI/Shell --self-test 连成失败即停止的验证链；Build-Installer.ps1 复用链后编译安装包。GitHub Actions 已配置同一流程，但本地工作区无 Git 远端，远端 CI 未运行。LogicChecks/RegressionFixtures 提供共享逻辑检查和临时文件夹具；Tests 项目不创建 Application、GUI 或 Shell 会话。--self-test 仅检查需 WPF/真实 Shell 的部分，失败返回非零退出码。MainWindow.xaml 已格式化为每个元素独立行，Win32 钩子、窗口样式、消息、DWM、Shell 标志使用命名常量。
 
 
 ## 0.4.0 捕获与诊断

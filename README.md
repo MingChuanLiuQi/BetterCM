@@ -1,10 +1,12 @@
-# BetterCM 1.6.0
+# BetterCM 1.7.0
 
-BetterCM 为 Windows 11 的经典右键菜单提供现代外观。1.6.0 整理设置体验：六个页面使用统一标题与说明，自定义动作和系统项目采用内容卡片、居中的勾选列和更舒适的行距，空列表提供引导。经典模式会就近说明哪些选项需要增强模式；设置文案、自定义动作编辑框和保存反馈同步更新。系统项目更新列表时保留不同目标的未保存勾选。验证见 QA-1.6.0.md，设计取舍见 REVIEW-1.6.0.md。
+BetterCM 为 Windows 11 的经典右键菜单提供现代外观。1.7.0 重点保护配置、改进长时间系统操作和后台异常处理，设置窗口可适应较小工作区，后台启动延迟创建设置页面。保留经用户复测有效的桌面挂件兼容调整。验证见 QA-1.7.0.md，审查建议的取舍见 REVIEW-1.7.0.md。
 
 ## 安装与使用
 
-运行项目根目录的 **BetterCM-1.6.0-Setup-x64.exe**。安装包包含 .NET/WPF 和 Windows App SDK 材质组件，无需另装运行时；可安装到原目录升级，沿用用户配置。默认目录是当前用户的 `%LOCALAPPDATA%\Programs\BetterCM`，不需要管理员权限。安装时可选择登录自启或桌面快捷方式，默认均不勾选。
+运行项目根目录的 **BetterCM-1.7.0-Setup-x64.exe**。安装包包含 .NET/WPF 和 Windows App SDK 材质组件，无需另装运行时；可安装到原目录升级，沿用用户配置。默认目录是当前用户的 `%LOCALAPPDATA%\Programs\BetterCM`，不需要管理员权限。安装时可选择登录自启或桌面快捷方式，默认均不勾选。
+
+安装包尚未使用发行者代码签名。可用 `Get-FileHash .\BetterCM-1.7.0-Setup-x64.exe -Algorithm SHA256`，与同目录 `.exe.sha256` 文件核对。构建来源与完整载荷清单记录在版本验证文件中。
 
 - 普通右键接管资源管理器文件视图、导航栏和桌面；开始按下前按住 Shift，可以使用原生菜单或原生右键拖动。
 - 默认“使用经典模式（推荐）”保持 Shell 返回的顺序、分隔线、子菜单、禁用、勾选、默认动作及访问键。只改变呈现，不重新合成 Git、打开方式、路径等分组，不自动插入内置或自定义命令。
@@ -19,6 +21,8 @@ BetterCM 为 Windows 11 的经典右键菜单提供现代外观。1.6.0 整理�
 - 设置可选择系统/深色/浅色、Mica/Acrylic/纯色，以及主菜单和侧边子菜单的动效。动画终点不重新移除视觉时钟或重建材质，只播放一套内容动画。
 - 默认呼出热键为 Alt+X，备用为 Ctrl+Shift+X；设置显示实际注册结果，格式错误时即时提示。撤销未保存的修改会取消未保存编辑和预览。预览准备期间被外部输入取消也立即恢复已保存外观；搜索先过滤已有项目，再补全慢速子菜单。
 - 关闭设置后继续驻留托盘，左键打开设置，托盘菜单可预览、暂停接管或退出。登录自启使用 `--background`；再次运行打开已有设置，不创建第二个常驻实例。
+- 配置读取失败时暂停保存并保留原文件；设置页提供重新读取和恢复上次备份入口。正常保存使用同目录原子替换，上一份配置保留为 `config.json.bak`。未知配置格式会被拒绝，避免旧程序覆盖新格式。
+- 系统动作可等待超过 30 秒的操作和确认框，不因统一等待上限误报失败；仍可打开下一份菜单。升级时先请求主程序正常退出；若系统任务仍占用文件，请等任务完成后重试安装。
 
 支持 Windows 11 x64。ARM64 尚未发布验证。
 
@@ -50,10 +54,12 @@ verify.ps1 执行警告视为错误的构建、无界面 xUnit、自带运行时
 
 ~~~powershell
 .\artifacts\publish\win-x64\BetterCM.exe --self-test .\artifacts\qa\manual-self-test.json
-.\artifacts\publish\win-x64\BetterCM.exe --stress-test .\artifacts\qa\stress-1.6.0.json
-.\artifacts\publish\win-x64\BetterCM.exe --input-check .\artifacts\qa\input-1.6.0.json
-.\artifacts\publish\win-x64\BetterCM.exe --cascade-input-check .\artifacts\qa\cascade-1.6.0.json
+.\artifacts\publish\win-x64\BetterCM.exe --stress-test .\artifacts\qa\stress-1.7.0.json
+.\artifacts\publish\win-x64\BetterCM.exe --input-check .\artifacts\qa\input-1.7.0.json
+.\artifacts\publish\win-x64\BetterCM.exe --cascade-input-check .\artifacts\qa\cascade-1.7.0.json
 ~~~
+
+以上是生成报告的命令示例，不表示这些输出文件已经存在。本次实际执行的检查、输出位置和未覆盖范围以 QA-1.7.0.md 为准。
 
 自检使用新建的临时夹具进行真实原生复制、移动及无副作用的视图刷新，检查回收站命令但不清空用户回收站。压力检查使用 40 秒假命令及卡住捕获夹具。两种输入检查需要按界面提示操作，只调用记录委托。
 
@@ -74,4 +80,4 @@ verify.ps1 执行警告视为错误的构建、无界面 xUnit、自带运行时
 
 1.0.1 布局与性能迭代的历史备份为 Backups\BetterCM-1.0.1-before-layout-perf-20261013-192047.zip，12584 文件逐一校验；同目录保存旧安装包。该历史迭代按用户要求保留 1.0.1 版本号，用 SHA256 区分构建。
 
-详见 [更新记录](CHANGELOG.md)、[架构](ARCHITECTURE.md)、[当前验证记录](QA-1.6.0.md)、[本轮审查处理记录](REVIEW-1.6.0.md) 和 [交接](HANDOFF-1.6.0.md)。
+详见 [更新记录](CHANGELOG.md)、[架构](ARCHITECTURE.md)、[当前验证记录](QA-1.7.0.md)、[本轮审查处理记录](REVIEW-1.7.0.md) 和 [交接](HANDOFF-1.7.0.md)。本仓库尚未指定项目自身的开源许可证；本轮不代维护者选择 MIT 或 Apache-2.0。第三方许可见 THIRD-PARTY-NOTICES.md。

@@ -203,6 +203,10 @@ public static class LogicChecks
             var upgraded = JsonSerializer.Deserialize<AppConfig>("{\"Theme\":\"light\",\"EnableAnimations\":false}")!;
             Check("0.2 配置保留偏好并获得新字段默认值", upgraded.Theme == "light" && !upgraded.EnableAnimations && upgraded.Material == "mica" && upgraded.ShowMoreItems && upgraded.MoreHoverDelayMs == 180);
             var visualConfig = new AppConfig { Material = "acrylic", ShowMoreItems = false, MoreHoverDelayMs = 300, OpenAnimation = "zoom", CloseAnimation = "slide", OpenAnimationMs = 200, CloseAnimationMs = 90, AnimationDistance = 24, AnimationScalePercent = 92, AnimationEasing = "sine" };
+            // Repair and reload explicitly: a failed load now protects the original
+            // instead of permitting the next save to overwrite invalid content.
+            await File.WriteAllTextAsync(configPath, JsonSerializer.Serialize(store.Current));
+            if (!store.Load()) throw new InvalidOperationException(store.LastError);
             Check("交互和动效配置完整保存与重载", store.Save(visualConfig) && store.Load() && JsonSerializer.Serialize(store.Current) == JsonSerializer.Serialize(visualConfig));
             Reject("拒绝无效材质", () => ConfigStore.Validate(new() { Material = "invalid" }));
             Reject("拒绝过短的悬停延时", () => ConfigStore.Validate(new() { MoreHoverDelayMs = 0 }));

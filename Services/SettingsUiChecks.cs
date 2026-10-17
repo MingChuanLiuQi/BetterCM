@@ -33,6 +33,33 @@ public static class SettingsUiChecks
             ((CheckBox)window.FindName("CompactOption")).IsChecked = !app.Config.CompactMenu;
             var restore = (Button)window.FindName("RestoreButton");
             restore.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var smallBounds = SettingsWindowSizing.Fit(960, 520, 1040, 800, 920, 640);
+            window.MinWidth = smallBounds.MinWidth; window.MinHeight = smallBounds.MinHeight;
+            window.Width = smallBounds.Width; window.Height = smallBounds.Height;
+            await window.Dispatcher.InvokeAsync(window.UpdateLayout, System.Windows.Threading.DispatcherPriority.ContextIdle);
+            var footerOrigin = save.TranslatePoint(new Point(0, 0), window);
+            check("较低工作区下设置窗口缩小且底部保存按钮完整可达", window.ActualHeight <= 496.01 && footerOrigin.Y >= 0 && footerOrigin.Y + save.ActualHeight <= window.ActualHeight && footerOrigin.X + save.ActualWidth <= window.ActualWidth, null);
+            // Exercise a startup/reload failure through the same App store used by
+            // the settings page, within the isolated self-test profile only.
+            Directory.CreateDirectory(Path.GetDirectoryName(app.ConfigPath)!);
+            string recoveryText = BetterCM.Config.ConfigJson.Serialize(app.Config);
+            File.WriteAllText(app.ConfigPath, recoveryText); app.ReloadConfiguration();
+            try
+            {
+                File.WriteAllText(app.ConfigPath, "{ invalid");
+                bool failedLoad = !app.ReloadConfiguration(); window.NotifyConfigurationChanged();
+                hotkey.Text = "Ctrl+Alt+F20";
+                check("配置读取失败时显示恢复入口且有效快捷键不能解除保存保护", failedLoad && !save.IsEnabled && ((Border)window.FindName("ConfigurationNotice")).Visibility == Visibility.Visible, null);
+                save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                check("配置读取失败后直接触发保存事件仍保护原文件", File.ReadAllText(app.ConfigPath) == "{ invalid", null);
+                File.WriteAllText(app.ConfigPath, recoveryText); app.ReloadConfiguration(); window.RefreshSettings();
+                check("修复配置并重新读取后恢复正常保存能力", save.IsEnabled && ((Border)window.FindName("ConfigurationNotice")).Visibility == Visibility.Collapsed, null);
+            }
+            finally
+            {
+                File.WriteAllText(app.ConfigPath, recoveryText); app.ReloadConfiguration();
+                if (originalConfig == null) File.Delete(app.ConfigPath); else File.WriteAllText(app.ConfigPath, originalConfig);
+            }
             check("还原已保存设置取消热键和其他未保存编辑", hotkey.Text == app.Config.GlobalHotkey && ((CheckBox)window.FindName("ReplaceMenu")).IsChecked == app.Config.ReplaceExplorerMenu && save.IsEnabled, null);
             check("还原设置不写入用户配置", originalConfig == (File.Exists(app.ConfigPath) ? File.ReadAllText(app.ConfigPath) : null), null);
             check("小尺寸模式具有独立设置且还原恢复原值", ((CheckBox)window.FindName("CompactOption")).IsChecked == app.Config.CompactMenu, null);

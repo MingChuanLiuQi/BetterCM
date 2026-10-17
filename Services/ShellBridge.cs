@@ -18,7 +18,7 @@ public sealed class ShellBridge : IDisposable
     internal int OpenCount { get; private set; }
     private readonly bool _testHost;
     private readonly TimeSpan _invokeTimeout;
-    public ShellBridge() : this(TimeSpan.FromSeconds(30), false) { }
+    public ShellBridge() : this(Timeout.InfiniteTimeSpan, false) { }
     internal ShellBridge(TimeSpan invokeTimeout, bool testHost) { _invokeTimeout = invokeTimeout; _testHost = testHost; }
     private ShellConnection NewConnection() => new(_invokeTimeout, _testHost);
     public Task PrepareAsync()
@@ -134,7 +134,7 @@ public sealed class ShellBridge : IDisposable
         public bool Closed => Volatile.Read(ref _disposed) != 0;
         public bool InvocationReserved { get; set; }
         public string? Session { get; set; }
-        public int? ProcessId => _process?.Id;
+        public int? ProcessId { get { lock (_operationSync) return _disposed == 0 ? _process?.Id : null; } }
         public async Task WarmAsync() { try { await EnsureStartedAsync(); } catch { Dispose(); } }
         private Task EnsureStartedAsync() { lock (_startSync) return _start ??= StartAsync(); }
         private async Task StartAsync()
@@ -165,6 +165,9 @@ public sealed class ShellBridge : IDisposable
             {
                 await _gate.WaitAsync(deadline.Token); acquired = true;
                 await EnsureStartedAsync().WaitAsync(deadline.Token);
+                // Startup stays bounded independently. A full enhanced tree may
+                // legitimately need longer than a deferred classic root menu.
+                deadline.CancelAfter(request.Kind == "invoke" ? invokeTimeout : request.Kind == "open" && !request.DeferSubmenus ? TimeSpan.FromSeconds(20) : TimeSpan.FromSeconds(6));
                 var id = Guid.NewGuid().ToString("N"); request = request with { RequestId = id };
                 // From this point a verb may be executing: every failure only closes IPC, never kills the host or its children.
                 if (request.Kind == "invoke")
@@ -183,7 +186,7 @@ public sealed class ShellBridge : IDisposable
                 bool expectedCancellation = cancellation.IsCancellationRequested || _lifetime.IsCancellationRequested;
                 Dispose();
                 if (!expectedCancellation) AppLog.Write("shell-transport", ex);
-                return new(false, request.Kind == "invoke" ? "系统动作未在等待时限内返回或连接中断；动作可能仍在后台继续。" : "系统项目读取失败，可重试或使用 Shift+右键：" + ex.Message);
+                return new(false, request.Kind == "invoke" ? "未收到系统动作的完成结果，连接已结束；动作可能仍由 Windows 继续执行。请先确认结果后再重试。" : "系统项目读取失败，可重试或使用 Shift+右键：" + ex.Message);
             }
             finally
             {
@@ -236,7 +239,7 @@ public static class ShellHost
                         {
                             if (request.Kind == "startup-flags") return new ShellResponse(true, Error: BackgroundProcess.StartupFlags().ToString());
                             if (request.Kind == "test-log") { for (int i = 0; i < request.Command; i++) AppLog.Write(request.Paths![0], new InvalidOperationException("并发日志夹具 " + i)); return new ShellResponse(true); }
-                            if (request.Kind == "open") { testSession = Guid.NewGuid().ToString("N"); return new ShellResponse(true, Session: testSession, Items: [new(0, "属性", "", "properties", "properties", true), new(40, "Slow test verb", "", "test", "test", true)]); }
+                            if (request.Kind == "open") { if (request.ViewPath == "slow-open") Thread.Sleep(6500); testSession = Guid.NewGuid().ToString("N"); return new ShellResponse(true, Session: testSession, Items: [new(0, "属性", "", "properties", "properties", true), new(40, "Slow test verb", "", "test", "test", true)]); }
                             if (request.Kind == "expand" && request.Session == testSession)
                             {
                                 if (request.Command == -3) Environment.Exit(77); // Isolated failure fixture, never a real Shell host.
@@ -267,15 +270,13 @@ public static class ShellHost
         catch (Exception ex) { AppLog.Write("shell-host", ex); }
         finally
         {
-            if (invoked && session != null)
-            {
-                // Give cross-process New callbacks a dispatcher turn before releasing their site.
-                await session.WaitForNewCallbackAsync();
-            }
-            session?.ReleaseCommands();
-            if (invoked && lifetime != null) await lifetime.DrainAsync();
-            if (session != null) await session.DrainCallbacksAsync();
-            session?.Dispose();
+            async Task Cleanup(string scope, Func<Task> step)
+            { try { await step(); } catch (Exception ex) { AppLog.Write(scope, ex); } }
+            if (invoked && session != null) await Cleanup("shell-new-callback", session.WaitForNewCallbackAsync);
+            await Cleanup("shell-release-commands", () => { session?.ReleaseCommands(); return Task.CompletedTask; });
+            if (invoked && lifetime != null) await Cleanup("shell-drain", lifetime.DrainAsync);
+            if (session != null) await Cleanup("shell-drain-callbacks", session.DrainCallbacksAsync);
+            await Cleanup("shell-dispose", () => { session?.Dispose(); return Task.CompletedTask; });
         }
     }
 }

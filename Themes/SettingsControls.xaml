@@ -50,17 +50,19 @@
     <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}" />
   </Style>
   <Style x:Key="TableCheck" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
-    <Setter Property="Width" Value="18" />
-    <Setter Property="Height" Value="18" />
+    <Setter Property="Width" Value="32" />
+    <Setter Property="Height" Value="32" />
     <Setter Property="HorizontalAlignment" Value="Center" />
     <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="Margin" Value="0" />
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="CheckBox">
-          <Border x:Name="Box" CornerRadius="3" BorderThickness="1" BorderBrush="{DynamicResource MutedBrush}" Background="{DynamicResource FieldBg}">
+          <Grid Background="Transparent">
+          <Border x:Name="Box" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="3" BorderThickness="1" BorderBrush="{DynamicResource MutedBrush}" Background="{DynamicResource FieldBg}">
             <TextBlock x:Name="Mark" Text="&#xE73E;" FontFamily="Segoe Fluent Icons" FontSize="12" Foreground="{DynamicResource OnAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
           </Border>
+          </Grid>
           <ControlTemplate.Triggers>
             <Trigger Property="IsChecked" Value="True">
               <Setter TargetName="Box" Property="Background" Value="{DynamicResource AccentBrush}" />

@@ -6,6 +6,7 @@ internal static class SettingsPersistence
     internal static string? Save(ConfigStore store, AppConfig next, bool startup,
         Func<StartupService.Snapshot> capture, Action<bool> setStartup, Action<StartupService.Snapshot> restoreStartup)
     {
+        if (!store.CanSave) return store.LastError;
         ConfigStore.Validate(next);
         var previous = store.Current.Clone();
         string? originalText = File.Exists(store.FilePath) ? File.ReadAllText(store.FilePath) : null;
