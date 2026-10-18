@@ -232,7 +232,7 @@ public partial class App : Application, IMenuHost
                 (definition.Toolbar ? toolbar : pref.IsPrimary ? primary : more).Add(action);
             }
             foreach (var custom in config.CustomActions.Where(a => !config.ClassicMenu && ActionCatalog.Matches(a, context)))
-                (custom.IsPrimary ? primary : more).Add(new() { Id = custom.Id, Title = custom.Title, Glyph = "\uE713", Detail = custom.Executable, Execute = () => RunCustomAsync(custom, context) });
+                (custom.IsPrimary ? primary : more).Add(CustomActionPresentation.Create(custom, () => RunCustomAsync(custom, context)));
             // Read native capabilities before the first frame. Replacing disabled placeholders
             // after Show() used to shrink the normal menu and animate an unintended second expansion.
             ShellResponse? response = null;

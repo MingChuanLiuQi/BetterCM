@@ -40,11 +40,8 @@ $setupPath = Join-Path $releaseDirectory ("BetterCM-" + $version + "-Setup-x64.e
 $stagedSetup = Join-Path $stagingPath ([IO.Path]::GetFileName($setupPath))
 if ($CertificateThumbprint) {
     Assert-ArtifactSignature $stagedSetup $CertificateThumbprint
-    $uninstaller = Join-Path $stagingPath 'signed-uninstaller.exe'
-    if (-not (Test-Path -LiteralPath $uninstaller -PathType Leaf)) { throw 'Signed uninstaller evidence missing from Inno signing callback.' }
-    Assert-ArtifactSignature $uninstaller $CertificateThumbprint
-    Copy-Item -LiteralPath $uninstaller -Destination (Join-Path $releaseDirectory 'signed-uninstaller.exe') -Force
 }
+$signedUninstallers = @(Update-PublishedUninstallerEvidence $stagingPath $releaseDirectory ([bool]$CertificateThumbprint) $CertificateThumbprint)
 Copy-Item -LiteralPath $stagedSetup -Destination $setupPath -Force
 $hash = Get-FileHash -LiteralPath $setupPath -Algorithm SHA256
 ($hash.Hash + '  ' + [IO.Path]::GetFileName($setupPath)) | Set-Content -LiteralPath ($setupPath + '.sha256') -Encoding utf8
@@ -62,7 +59,9 @@ Write-Output ("SHA256: " + $hash.Hash)
         SigningStatus = if ($CertificateThumbprint) { 'VerifiedTrustedTimestamped' } else { 'BlockedNoCertificate' }
         DesktopChecks = -not [bool]$SkipDesktopChecks
         InstallerSHA256 = $hash.Hash
-        SignedUninstallerSHA256 = if ($CertificateThumbprint) { (Get-FileHash -LiteralPath (Join-Path $releaseDirectory 'signed-uninstaller.exe')).Hash } else { $null }
+        SignerThumbprint = $CertificateThumbprint
+        SignedUninstallers = $signedUninstallers
+        SignedUninstallerSHA256 = if ($signedUninstallers.Count -eq 1) { $signedUninstallers[0].SHA256 } else { $null }
         Files = $payloadFiles
     } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $projectRoot ('artifacts\qa\payload-' + $version + '.json')) -Encoding utf8
     $buildCompleted = $true

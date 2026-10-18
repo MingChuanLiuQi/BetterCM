@@ -37,3 +37,7 @@
 - 远端 GitHub Actions、交互 runner、鼠标 E2E、Accessibility Insights 和屏幕阅读器未实跑。
 - ARM64、混合 DPI 及所有第三方 Shell 扩展组合仍未验证；图标独立来源待确认。
 - Maintenance 保留所有已有历史备份和 QA 原目录，不删除或声称回收全部 53 GB 历史备份；本轮以实际 maintenance-report 计量归档结果。
+
+## 1.8.1 复查补充说明
+
+本文件保留 1.8.0 历史记录。其安装/卸载演练实际使用 QA TestBuild 标识，最终正式 Setup 仅校验哈希、载荷和来源，没有执行真实安装；不能据 ReleaseKind=Release 推定正式标识安装已验证。旧 RemainingDev=3 仅统计 dev-*，未覆盖 dev2–dev9。后续修复、完整统计和保留边界见 [QA-1.8.1](../1.8.1/QA-1.8.1.md)。根目录 artifacts/qa 中通用文件名报告会随下一版更新，1.8.0 报告副本保存于 artifacts/qa/history/1.8.0。

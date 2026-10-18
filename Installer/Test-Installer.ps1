@@ -58,6 +58,12 @@ $failure = $null
 try {
     Run-Checked $SetupPath @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR=' + $installPath),'/TASKS=autostart',('/LOG=' + (Join-Path $qaFolder 'install-smoke.log')))
     $installedExe = Join-Path $installPath 'BetterCM.exe'
+    if (-not $Isolated -and $payload -and $payload.Signed -and (Get-FileHash -LiteralPath $SetupPath).Hash -eq $payload.InstallerSHA256) {
+        . (Join-Path $PSScriptRoot 'Signing.ps1')
+        $installedUninstaller = Join-Path $installPath 'unins000.exe'
+        Assert-ArtifactSignature $installedUninstaller $payload.SignerThumbprint
+        Check '安装后的卸载器与签名回调捕获的架构证据一致' ((Get-FileHash -LiteralPath $installedUninstaller).Hash -in @($payload.SignedUninstallers.SHA256))
+    }
     Check ('安装可执行文件和 ' + $version + ' 版本') ((Test-Path -LiteralPath $installedExe) -and (Get-Item -LiteralPath $installedExe).VersionInfo.FileVersion -eq $fileVersion)
     Check '安装包含 .NET、WPF 与系统材质运行组件' ((Test-Path -LiteralPath (Join-Path $installPath 'coreclr.dll')) -and (Test-Path -LiteralPath (Join-Path $installPath 'PresentationFramework.dll')) -and (Test-Path -LiteralPath (Join-Path $installPath 'dwmcorei.dll')) -and (Test-Path -LiteralPath (Join-Path $installPath 'Microsoft.UI.Composition.OSSupport.dll')) -and (Test-Path -LiteralPath (Join-Path $installPath 'Microsoft.InteractiveExperiences.Projection.dll')))
     Check '运行时和安装语言许可说明已随包安装' ((Test-Path -LiteralPath (Join-Path $installPath 'DotNet-LICENSE.TXT')) -and (Test-Path -LiteralPath (Join-Path $installPath 'WindowsDesktop-LICENSE')) -and (Test-Path -LiteralPath (Join-Path $installPath 'THIRD-PARTY-NOTICES.md')))
@@ -119,7 +125,9 @@ finally {
     $finalSetupPath = $releaseContext.FinalSetupPath
     $finalSetupHash = if (Test-Path -LiteralPath $finalSetupPath) { (Get-FileHash -LiteralPath $finalSetupPath -Algorithm SHA256).Hash } else { $null }
     if ($ReleaseKind -eq 'Release' -and (-not $finalSetupHash -or $finalSetupHash -ne $releaseContext.FinalSetupSHA256)) { $failure = ($failure + '; Final release installer missing or changed during smoke test.') }
-    $report = [pscustomobject]@{Version=$version;Time=[DateTimeOffset]::Now;ReleaseKind=$ReleaseKind;SourceCommit=(& git -C $projectRoot rev-parse HEAD);IsolatedInstallerIdentity=[bool]$Isolated;SetupSHA256=(Get-FileHash -LiteralPath $SetupPath -Algorithm SHA256).Hash;FinalSetupPath=[IO.Path]::GetRelativePath($projectRoot,$finalSetupPath).Replace('\','/');FinalSetupSHA256=$finalSetupHash;Passed=($null -eq $failure -and @($results | Where-Object { -not $_.Passed }).Count -eq 0);Failure=$failure;Results=$results}
+    $setupHash = (Get-FileHash -LiteralPath $SetupPath -Algorithm SHA256).Hash
+    $scope = Get-InstallerValidationScope ([bool]$Isolated) $setupHash $finalSetupHash ($null -eq $failure -and @($results | Where-Object { -not $_.Passed }).Count -eq 0)
+    $report = [pscustomobject]@{Version=$version;Time=[DateTimeOffset]::Now;ReleaseKind=$ReleaseKind;ValidationScope=$scope.Scope;ExactFinalSetupInstalled=$scope.ExactFinalSetupInstalled;FinalSetupValidation=$scope.FinalSetupValidation;CleanEnvironmentVerification=$scope.CleanEnvironmentVerification;SourceCommit=(& git -C $projectRoot rev-parse HEAD);IsolatedInstallerIdentity=[bool]$Isolated;SetupSHA256=$setupHash;FinalSetupPath=[IO.Path]::GetRelativePath($projectRoot,$finalSetupPath).Replace('\','/');FinalSetupSHA256=$finalSetupHash;Passed=($null -eq $failure -and @($results | Where-Object { -not $_.Passed }).Count -eq 0);Failure=$failure;Results=$results}
     $report | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $qaFolder 'installer-smoke.json') -Encoding utf8
     $report | ConvertTo-Json -Depth 5
 }

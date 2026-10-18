@@ -1,4 +1,4 @@
-param([switch]$Apply, [int]$KeepRecent = 3, [string[]]$AdditionalSource = @(), [switch]$IncludeVerificationFixtures)
+param([switch]$Apply, [int]$KeepRecent = 3, [string[]]$AdditionalSource = @(), [switch]$IncludeVerificationFixtures, [switch]$SkipQaArchive)
 $ErrorActionPreference = 'Stop'
 if ($KeepRecent -lt 0) { throw 'KeepRecent must be nonnegative.' }
 $root = [IO.Path]::GetFullPath($PSScriptRoot)
@@ -18,12 +18,24 @@ $backupRoot = Join-Path $root 'Backups'
 $stamp = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8)
 $plans = @()
 $artifactPath = Join-Path $root 'artifacts'
+$groups = @(
+    @{ Name = 'Development'; Pattern = '^dev[0-9]*-' },
+    @{ Name = 'InstallerBuild'; Pattern = '^installer-' },
+    @{ Name = 'QaCompiler'; Pattern = '^qa-(?:.*-)?compiler-' },
+    @{ Name = 'QaInstaller'; Pattern = '^qa-installer-' },
+    @{ Name = 'ScriptFixture'; Pattern = '^script-fixture-[0-9a-f]{32}$' }
+)
+$groupCounts = @()
 if (Test-Path -LiteralPath $artifactPath) {
-    $patterns = @('dev-*', 'installer-build-*')
-    foreach ($pattern in $patterns) {
-        $items = @(Get-ChildItem -LiteralPath $artifactPath -Directory -Filter $pattern | Sort-Object LastWriteTime -Descending | Select-Object -Skip $KeepRecent)
+    $directories = @(Get-ChildItem -LiteralPath $artifactPath -Directory)
+    foreach ($group in $groups) {
+        # dev-, dev2-, dev9-, etc. share one retention budget, rather than N per prefix.
+        $matchedDirectories = @($directories | Where-Object Name -Match $group.Pattern | Sort-Object -Property LastWriteTime, Name -Descending)
+        $items = @($matchedDirectories | Select-Object -Skip $KeepRecent)
+        $groupCounts += [pscustomobject]@{ Name = $group.Name; Pattern = $group.Pattern; MatchedBefore = $matchedDirectories.Count; PlannedArchives = $items.Count; Remaining = $matchedDirectories.Count - $items.Count }
+        Write-Output ($group.Name + ': matched=' + $matchedDirectories.Count + ', keep=' + ($matchedDirectories.Count - $items.Count) + ', archive=' + $items.Count)
         foreach ($item in $items) {
-            $plans += [pscustomobject]@{ Action = 'Archive then remove build directory'; Path = (Assert-WorkspacePath $item.FullName) }
+            $plans += [pscustomobject]@{ Action = 'Archive then remove build directory'; Group = $group.Name; Path = (Assert-WorkspacePath $item.FullName) }
         }
     }
     if ($IncludeVerificationFixtures) {
@@ -34,7 +46,7 @@ if (Test-Path -LiteralPath $artifactPath) {
     }
 }
 $qa = Join-Path $root 'artifacts\qa'
-if (Test-Path -LiteralPath $qa) { $plans += [pscustomobject]@{ Action = 'Archive QA evidence (keep directory)'; Path = (Assert-WorkspacePath $qa) } }
+if (-not $SkipQaArchive -and (Test-Path -LiteralPath $qa)) { $plans += [pscustomobject]@{ Action = 'Archive QA evidence (keep directory)'; Path = (Assert-WorkspacePath $qa) } }
 $plans | ForEach-Object { Write-Output ($_.Action + ": " + $_.Path) }
 Write-Output 'Source backup: git tracked files + untracked source/document types + explicit AdditionalSource; excludes generated output at every depth.'
 Write-Output 'History backup: git bundle --all. Release payloads and existing backups are always retained.'
@@ -100,6 +112,9 @@ foreach ($plan in $plans) {
     }
     $completed.Add([pscustomobject]@{ Path = [IO.Path]::GetRelativePath($root, $path); Archive = [IO.Path]::GetRelativePath($root, $destination); OriginalBytes = $sourceBytes; ArchiveBytes = (Get-Item -LiteralPath $destination).Length; Removed = -not (Test-Path -LiteralPath $path) })
 }
-[pscustomobject]@{ Time = [DateTimeOffset]::Now; KeepRecent = $KeepRecent; ExistingBackupsRetained = $true; Results = $completed } |
+foreach ($group in $groupCounts) {
+    $group.Remaining = @(Get-ChildItem -LiteralPath $artifactPath -Directory | Where-Object Name -Match $group.Pattern).Count
+}
+[pscustomobject]@{ Time = [DateTimeOffset]::Now; KeepRecent = $KeepRecent; ExistingBackupsRetained = $true; QaArchiveSkipped = [bool]$SkipQaArchive; Groups = $groupCounts; Results = $completed } |
     ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $artifactPath 'maintenance-report.json') -Encoding utf8
 Write-Output 'Maintenance complete. Release payloads, QA directory and all historical backups retained.'

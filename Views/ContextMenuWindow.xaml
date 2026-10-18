@@ -4,6 +4,7 @@
   </shell:WindowChrome.WindowChrome>
   <Window.Resources>
     <Style x:Key="MenuButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+      <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Padding" Value="{DynamicResource ActionPadding}" />
@@ -11,6 +12,8 @@
       <Setter Property="ToolTipService.InitialShowDelay" Value="700" />
     </Style>
     <Style TargetType="ListBoxItem">
+      <Setter Property="ToolTip" Value="{Binding Detail}" />
+      <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
       <EventSetter Event="Loaded" Handler="MenuRow_Loaded" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="Margin" Value="0,1" />

@@ -22,3 +22,15 @@ function Get-InstallerReportContext {
         FinalSetupSHA256 = if (Test-Path -LiteralPath $path -PathType Leaf) { (Get-FileHash -LiteralPath $path).Hash } else { $null }
     }
 }
+
+function Get-InstallerValidationScope {
+    param([bool]$Isolated, [string]$SetupSHA256, [string]$FinalSetupSHA256, [bool]$SmokePassed = $false)
+    $sameIdentity = -not $Isolated -and $FinalSetupSHA256 -and $SetupSHA256 -eq $FinalSetupSHA256
+    $exact = $sameIdentity -and $SmokePassed
+    [pscustomobject]@{
+        Scope = if ($Isolated) { 'QaIdentitySharedPayload' } elseif ($sameIdentity) { 'ExactFinalSetupCurrentEnvironment' } else { 'InternalSetupCurrentEnvironment' }
+        ExactFinalSetupInstalled = [bool]$exact
+        FinalSetupValidation = if ($exact) { 'InstalledAndUninstalled' } elseif ($sameIdentity) { 'AttemptFailed' } else { 'HashAndSourceOnly' }
+        CleanEnvironmentVerification = 'NotPerformed'
+    }
+}
