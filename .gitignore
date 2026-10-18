@@ -6,3 +6,9 @@ Tests/bin/
 Tests/obj/
 *.exe
 *.log
+*.exe.sha256
+.vs/
+*.user
+*.suo
+TestResults/
+*.trx

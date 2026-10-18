@@ -17,14 +17,14 @@ DefaultDirName={localappdata}\Programs\{#ProductName}
 DefaultGroupName={#ProductName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64os
+ArchitecturesInstallIn64BitMode=x64os
 MinVersion=10.0.22000
 #ifdef TestBuild
 OutputDir=..\artifacts\qa
 OutputBaseFilename=BetterCM-{#AppVersion}-QA-Setup-x64
 #else
-OutputDir=..
+OutputDir=..\artifacts\releases\{#AppVersion}
 OutputBaseFilename=BetterCM-{#AppVersion}-Setup-x64
 #endif
 SetupIconFile=..\Assets\BetterCM.ico
@@ -36,6 +36,11 @@ CloseApplications=no
 RestartApplications=no
 SetupLogging=yes
 VersionInfoVersion={#AppVersion}.0
+VersionInfoCopyright=Copyright (c) 2026 BetterCM contributors
+#ifdef SignedBuild
+SignTool=BetterCMSign
+SignedUninstaller=yes
+#endif
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 [Tasks]

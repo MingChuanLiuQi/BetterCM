@@ -3,7 +3,7 @@ namespace BetterCM.Models;
 
 public sealed record ActionDefinition(string Id, string Title, string Glyph, string Shortcut, bool Primary, bool Toolbar = false)
 {
-    public bool Supports(SelectedContext ctx) => Id == "refresh" ? ctx.ShellBackground && ctx.SourceWindow != 0 : Services.ShellCommandMap.IsNative(Id) ? ctx.HasTarget : ctx.HasFileTarget && (Id switch
+    public bool Supports(SelectedContext ctx) => Id == "code" && Services.ExecutableResolver.VSCode == null ? false : Id == "refresh" ? ctx.ShellBackground && ctx.SourceWindow != 0 : Services.ShellCommandMap.IsNative(Id) ? ctx.HasTarget : ctx.HasFileTarget && (Id switch
     {
         "cut" or "copy" => ctx.HasSelection,
         "content" or "notepad" => ctx.IsText,

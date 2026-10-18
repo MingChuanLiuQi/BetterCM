@@ -1,0 +1,34 @@
+name: CodeQL
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '23 3 * * 1'
+permissions:
+  contents: read
+  security-events: write
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  analyze:
+    # Private repositories need GitHub Code Security enabled; public repositories can run directly.
+    if: github.event.repository.private == false || vars.ENABLE_CODEQL == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+      - uses: github/codeql-action/init@f051dc808ef3645eb0d08647ec751634ec2304ac # v4
+        with:
+          languages: csharp
+          build-mode: manual
+      - shell: pwsh
+        run: |
+          dotnet restore BetterCM.slnx --locked-mode
+          if ($LASTEXITCODE -ne 0) { throw 'Locked restore failed.' }
+          dotnet build BetterCM.slnx -c Release --no-restore --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'CodeQL build failed.' }
+      - uses: github/codeql-action/analyze@f051dc808ef3645eb0d08647ec751634ec2304ac # v4

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="BetterCM.csproj" />
+  <Project Path="Tests/BetterCM.Tests.csproj" />
+</Solution>

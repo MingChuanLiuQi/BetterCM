@@ -219,6 +219,22 @@ public partial class MainWindow : Window
         catch (Exception ex) { SaveStatus.Text = ex.Message; }
     }
     private void OpenConfig_Click(object sender, RoutedEventArgs e) => Process.Start(new ProcessStartInfo(_app.ConfigPath) { UseShellExecute = true });
+    private async void ExportDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "ZIP 诊断包 (*.zip)|*.zip", FileName = "BetterCM-diagnostics-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".zip", OverwritePrompt = true };
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            var snapshot = _app.Config.Clone();
+            double dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this).PixelsPerInchX;
+            // Export atomically, preserving an existing destination until the archive is complete.
+            string temporary = dialog.FileName + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try { await Task.Run(() => DiagnosticExporter.Export(temporary, snapshot, dpi)); File.Move(temporary, dialog.FileName, true); }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+            SaveStatus.Text = "诊断包已导出（路径、文件名及自定义内容已省略，日志仅含摘要），分享前请先检查。";
+        }
+        catch (Exception ex) { AppLog.Write("diagnostics-export", ex); SaveStatus.Text = "导出失败：" + ex.Message; }
+    }
     private void OpenLogs_Click(object sender, RoutedEventArgs e) => Process.Start(new ProcessStartInfo(ConfigStore.DataDirectory) { UseShellExecute = true });
     private void Hide_Click(object sender, RoutedEventArgs e) => Hide();
     private void Window_Closing(object? sender, CancelEventArgs e) { if (!_app.IsExiting) { e.Cancel = true; Hide(); } }

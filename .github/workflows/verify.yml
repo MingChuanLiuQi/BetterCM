@@ -3,22 +3,75 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      desktop:
+        description: Run checks on an explicitly configured interactive desktop runner
+        type: boolean
+        default: false
 permissions:
   contents: read
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           global-json-file: global.json
-      - name: Build, headless tests and publish (desktop checks run locally)
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+      - name: Build, test, audit dependencies and publish
         shell: pwsh
         run: ./verify.ps1 -SkipDesktopChecks
       - name: Upload verification reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: verification-reports
+          path: artifacts/qa
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --version=6.5.4 --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+      - name: Compile internal unsigned installer
+        shell: pwsh
+        run: ./Build-Installer.ps1 -SkipDesktopChecks
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: internal-unsigned-installer
+          path: |
+            artifacts/internal
+            artifacts/qa/payload-*.json
+  desktop:
+    if: github.event_name == 'workflow_dispatch' && inputs.desktop
+    runs-on: [self-hosted, Windows, X64, interactive-desktop]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+      - shell: pwsh
+        run: ./verify.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: desktop-verification-reports
           path: artifacts/qa

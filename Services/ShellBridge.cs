@@ -26,6 +26,7 @@ public sealed class ShellBridge : IDisposable
         lock (_sync)
         {
             if (_disposed) return Task.CompletedTask;
+            if (_current is { Closed: true }) _current = null;
             _current ??= NewConnection(); return _current.WarmAsync();
         }
     }
@@ -43,6 +44,7 @@ public sealed class ShellBridge : IDisposable
             generation = ++_opening;
             OpenCount++;
             if (_current is { } previous && (previous.Busy || previous.Closed)) { previous.Dispose(); _current = null; }
+            if (_spare is { Closed: true }) { _spare.Dispose(); _spare = null; }
             if (_current == null) { _current = _spare ?? NewConnection(); _spare = null; }
             connection = _current;
         }

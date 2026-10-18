@@ -1,7 +1,9 @@
 # BetterCM 当前验证记录
 
-当前迭代为 **1.7.0**。完整结果以 [QA-1.7.0.md](QA-1.7.0.md) 为准，建议取舍见 [REVIEW-1.7.0.md](REVIEW-1.7.0.md)，交接见 [HANDOFF-1.7.0.md](HANDOFF-1.7.0.md)。历史版本记录保留，不将过去的检查数量计入本轮。
+当前版本为 **1.8.0**。本轮复查后的主仓库构建与证据入口见 [QA-1.8.0](docs/releases/1.8.0/QA-1.8.0.md)，修改说明见 [审查实施记录](docs/current/REVIEW-IMPLEMENTATION.md)。[初轮隔离候选包](docs/releases/1.8.0/QA-1.8.0-candidate.md) 仅作历史过程证据。
 
-正式安装包位于项目根目录 BetterCM-1.7.0-Setup-x64.exe，同目录提供 SHA256 校验文件。Build-Installer.ps1 要求源码已提交且工作区干净，依次构建、测试、发布和 UI/Shell 自检；通过后才编译安装包。Installer/Expected-Checks.json 是已审阅的自检名称清单，发布和安装后都必须精确匹配。
+`Build-Installer.ps1` 要求干净主仓库提交、锁文件、漏洞审计、脚本/逻辑测试、发布目录检查及 273 项 UI/Shell 自检通过；最终包在 artifacts/releases/1.8.0，载荷清单记录其 SHA256 与 SourceCommit。本地 annotated tag v1.8.0 标记源码，没有远端推送。
 
-GitHub Actions 只执行无需交互桌面的部分；本机 UI/Shell、压力和安装测试分别生成报告。远端 CI、混合 DPI、多语言、ARM64 和所有第三方扩展组合均不据本机通过结果推定为已验证。安装包未签名，未执行用户日常安装的卸载演练。
+`Test-Installer.ps1` 默认 Release 门禁，最终包或对应 payload 缺失不能通过；纯内部演练须显式传入 -ReleaseKind Internal。维护默认 dry-run，Apply 只在归档及逐文件校验后移除旧构建目录，保留历史备份和 QA 原目录。
+
+真实代码签名证书尚未提供，正式签名发布明确阻塞；远端 CI、真实屏幕阅读器、鼠标 E2E、混合 DPI 与 ARM64 不据本机自检通过推定为已验证。

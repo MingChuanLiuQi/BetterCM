@@ -1,10 +1,20 @@
-param([string]$SetupPath, [switch]$Isolated)
+param([string]$SetupPath, [switch]$Isolated, [ValidateSet('Release', 'Internal')][string]$ReleaseKind = 'Release')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot
 [xml]$project = Get-Content -LiteralPath (Join-Path $projectRoot 'BetterCM.csproj') -Raw
 $version = [string]$project.Project.PropertyGroup.Version
+. (Join-Path $PSScriptRoot 'ReleaseReports.ps1')
+$releaseContext = Get-InstallerReportContext $projectRoot $version $ReleaseKind
+if ($ReleaseKind -eq 'Release') {
+    $payload = Get-Content -LiteralPath (Join-Path $projectRoot ('artifacts\qa\payload-' + $version + '.json')) -Raw | ConvertFrom-Json
+    $head = & git -C $projectRoot rev-parse HEAD
+    if ($LASTEXITCODE -ne 0 -or $payload.SourceCommit -ne $head -or $payload.Version -ne $version -or $payload.InstallerSHA256 -ne $releaseContext.FinalSetupSHA256) {
+        throw 'Final installer, payload manifest and current source commit must agree before a release smoke test.'
+    }
+}
 $fileVersion = $version + '.0'
-if (-not $SetupPath) { $SetupPath = if ($Isolated) { Join-Path $projectRoot ('artifacts\qa\BetterCM-' + $version + '-QA-Setup-x64.exe') } else { Join-Path $projectRoot ('BetterCM-' + $version + '-Setup-x64.exe') } }
+if (-not $SetupPath) { $SetupPath = if ($Isolated) { Join-Path $projectRoot ('artifacts\qa\BetterCM-' + $version + '-QA-Setup-x64.exe') } elseif ($ReleaseKind -eq 'Internal') { Join-Path $projectRoot ('artifacts\internal\' + $version + '\BetterCM-' + $version + '-Setup-x64.exe') } else { $releaseContext.FinalSetupPath } }
+if (-not (Test-Path -LiteralPath $SetupPath -PathType Leaf)) { throw 'Test installer does not exist.' }
 $qaFolder = Join-Path $projectRoot 'artifacts\qa'
 $installPath = [System.IO.Path]::GetFullPath((Join-Path $projectRoot ('artifacts\install-smoke-' + $version)))
 $artifactRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts')) + [System.IO.Path]::DirectorySeparatorChar
@@ -67,7 +77,7 @@ try {
     $installedResults = Get-Content -LiteralPath $installedReport -Raw | ConvertFrom-Json
     $publishedResults = Get-Content -LiteralPath (Join-Path $qaFolder 'published-tests.json') -Raw | ConvertFrom-Json
     $expectedChecks = Get-Content -LiteralPath (Join-Path $projectRoot 'Installer\Expected-Checks.json') -Raw | ConvertFrom-Json
-    $installedNames = $installedResults.Results.Name | Sort-Object -CaseSensitive | ConvertTo-Json -Compress
+    $installedNames = $installedResults.Results.Id | Sort-Object -CaseSensitive | ConvertTo-Json -Compress
     $expectedNames = $expectedChecks.UiShell | Sort-Object -CaseSensitive | ConvertTo-Json -Compress
     Check ('安装目录可独立运行且完整 ' + $expectedChecks.UiShell.Count + ' 项自检通过') ($installedResults.Passed -and $installedResults.Version -eq $version -and $publishedResults.Passed -and $publishedResults.Version -eq $version -and $installedResults.Build -eq $publishedResults.Build -and $installedNames -ceq $expectedNames -and $installedResults.Results.Count -eq $publishedResults.Results.Count)
     $backgroundInfo = [System.Diagnostics.ProcessStartInfo]::new($installedExe)
@@ -106,8 +116,10 @@ finally {
     if ($uninstallKey) { $uninstallKey.Dispose() }
     $configHashAfter = if (Test-Path -LiteralPath $userConfig) { (Get-FileHash -LiteralPath $userConfig).Hash } else { $null }
     $results.Add([pscustomobject]@{Name='原有用户配置保持不变';Passed=($configHashBefore -eq $configHashAfter)})
-    $finalSetupPath = Join-Path $projectRoot ('BetterCM-' + $version + '-Setup-x64.exe')
-    $report = [pscustomobject]@{Version=$version;Time=[DateTimeOffset]::Now;IsolatedInstallerIdentity=[bool]$Isolated;SetupSHA256=(Get-FileHash -LiteralPath $SetupPath -Algorithm SHA256).Hash;FinalSetupSHA256=(Get-FileHash -LiteralPath $finalSetupPath -Algorithm SHA256).Hash;Passed=($null -eq $failure -and @($results | Where-Object { -not $_.Passed }).Count -eq 0);Failure=$failure;Results=$results}
+    $finalSetupPath = $releaseContext.FinalSetupPath
+    $finalSetupHash = if (Test-Path -LiteralPath $finalSetupPath) { (Get-FileHash -LiteralPath $finalSetupPath -Algorithm SHA256).Hash } else { $null }
+    if ($ReleaseKind -eq 'Release' -and (-not $finalSetupHash -or $finalSetupHash -ne $releaseContext.FinalSetupSHA256)) { $failure = ($failure + '; Final release installer missing or changed during smoke test.') }
+    $report = [pscustomobject]@{Version=$version;Time=[DateTimeOffset]::Now;ReleaseKind=$ReleaseKind;SourceCommit=(& git -C $projectRoot rev-parse HEAD);IsolatedInstallerIdentity=[bool]$Isolated;SetupSHA256=(Get-FileHash -LiteralPath $SetupPath -Algorithm SHA256).Hash;FinalSetupPath=[IO.Path]::GetRelativePath($projectRoot,$finalSetupPath).Replace('\','/');FinalSetupSHA256=$finalSetupHash;Passed=($null -eq $failure -and @($results | Where-Object { -not $_.Passed }).Count -eq 0);Failure=$failure;Results=$results}
     $report | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $qaFolder 'installer-smoke.json') -Encoding utf8
     $report | ConvertTo-Json -Depth 5
 }

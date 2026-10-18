@@ -28,3 +28,7 @@ The self-contained distribution also includes Microsoft .NET runtime files. The 
 
 The menu system backdrop uses Microsoft Windows App SDK InteractiveExperiences and Base components. Their native composition dependencies are included in the self-contained distribution. The packaging script copies the license files from the exact restored Microsoft.WindowsAppSDK component packages using their package names as prefixes. Test-only xUnit and Microsoft.NET.Test.Sdk packages are not distributed with the application.
 
+
+## BetterCM icon provenance
+
+`Assets/BetterCM.ico` 的独立来源和授权尚未有可核对记录。项目源码的 MIT 授权不构成对未知第三方图标权利的声明。维护者应确认原始来源/创作者及授权，或在公开发行前替换为来源明确的图标。

@@ -12,7 +12,7 @@ using Forms = System.Windows.Forms;
 using Microsoft.Win32;
 namespace BetterCM;
 
-public partial class App : Application
+public partial class App : Application, IMenuHost
 {
     private static string InstanceName => Environment.GetEnvironmentVariable("BETTERCM_DATA_DIR") is { Length: > 0 } directory
         ? "BetterCM." + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(directory).ToUpperInvariant())))[..16] : "BetterCM";
@@ -27,8 +27,7 @@ public partial class App : Application
     private InputService? _input;
     private MainWindow? _settings;
     private ContextMenuWindow? _menu;
-    private FileSystemWatcher? _watcher;
-    private DispatcherTimer? _reload;
+    private ConfigurationWatcher? _watcher;
     private bool _executing;
     private CancellationTokenSource? _captureCancellation, _shellCancellation;
     private int _triggerGeneration;
@@ -52,6 +51,7 @@ public partial class App : Application
         _helperMode = AppInstance.IsHelper(e.Args);
         DispatcherUnhandledException += DispatcherFailure;
         TaskScheduler.UnobservedTaskException += UnobservedFailure;
+        AppDomain.CurrentDomain.UnhandledException += DomainFailure;
         try
         {
             if (_helperMode && e.Args.Length < 2) throw new ArgumentException("辅助宿主缺少管道参数。");
@@ -88,7 +88,7 @@ public partial class App : Application
             _input = new(); _input.Triggered += request => _ = TriggerAsync(request);
             _input.Apply(Config.GlobalHotkey, Config.ReplaceExplorerMenu);
             _executor = new(_shell);
-            _menu = new();
+            _menu = new() { Host = this };
             // Inspection changes taskbar discoverability only; rendering and all dismissal paths stay enabled.
             _menu.ShowInTaskbar = e.Args.Contains("--inspect-menu");
             _previewInactive = e.Args.Contains("--preview-inactive");
@@ -256,9 +256,15 @@ public partial class App : Application
                 shellActions = CreateShellActions(response, config);
                 Timing += $"；系统项目准备：{timer.Elapsed.TotalMilliseconds:F0} ms";
             }
-            int generation = _menu.ShowAt(x, y, context, config, toolbar, primary, more, !_previewInactive, shellActions, response?.Error ?? (!context.HasTarget ? context.Source : null), config.ClassicMenu ? response?.Menu ?? [] : null,
+            int generation = _menu.ShowAt(new MenuPresentationRequest
+            {
+                X = x, Y = y, Context = context, Config = config,
+                Toolbar = toolbar, Primary = primary, More = more, Activate = !_previewInactive,
+                Shell = shellActions, ShellError = response?.Error ?? (!context.HasTarget ? context.Source : null),
+                NativeMenu = config.ClassicMenu ? response?.Menu ?? [] : null,
+                NativeRefresh =
                 config.ClassicMenu && context.ShellBackground && context.SourceWindow != 0 ? () => RunAsync(async (_, _) => { var refreshed = await _shell.RefreshAsync(context); if (!refreshed.Success) throw new InvalidOperationException(refreshed.Error); return null; }) : null,
-                config.ClassicMenu && response?.Session is { } session ? async submenu =>
+                NativeLoad = config.ClassicMenu && response?.Session is { } session ? async submenu =>
                 {
                     var page = await _shell.ExpandAsync(session, submenu);
                     if (request != _menuRequest || page.Superseded) throw new OperationCanceledException("菜单上下文已改变");
@@ -266,7 +272,8 @@ public partial class App : Application
                     LastShellItems = page.Items ?? [];
                     _lastNativeMenu = submenu is int token ? NativeMenuTree.Replace(_lastNativeMenu, token, page.Menu ?? []) : page.Menu ?? [];
                     return new NativeMenuPage(page.Menu ?? [], CreateShellActions(page, config));
-                } : null);
+                } : null
+            });
             presented = true;
             _ = FillDetailsAsync(generation, context);
             ObserveQa();
@@ -351,15 +358,10 @@ public partial class App : Application
     private static string FormatSize(long size) => size < 1024 ? $"{size} B" : size < 1048576 ? $"{size / 1024.0:F1} KB" : size < 1073741824 ? $"{size / 1048576.0:F1} MB" : $"{size / 1073741824.0:F2} GB";
     private void WatchConfiguration()
     {
-        _reload = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
-        _reload.Tick += (_, _) => { _reload.Stop(); try { if (!ReloadConfiguration()) ReportError(_store.LastError!); } catch (Exception ex) { ReportError(ex.Message); } };
-        try { Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!); }
-        catch (Exception ex) { AppLog.Write("config-watch", ex); return; }
-        _watcher = new(Path.GetDirectoryName(ConfigPath)!, Path.GetFileName(ConfigPath)) { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName };
-        FileSystemEventHandler changed = (_, _) => Dispatcher.BeginInvoke(() => { _reload.Stop(); _reload.Start(); });
-        _watcher.Changed += changed; _watcher.Created += changed; _watcher.Renamed += (_, _) => Dispatcher.BeginInvoke(() => { _reload.Stop(); _reload.Start(); });
-        _watcher.EnableRaisingEvents = true;
+        try { _watcher = new(ConfigPath, Dispatcher, () => { try { if (!ReloadConfiguration()) ReportError(_store.LastError!); } catch (Exception ex) { AppLog.Write("config-reload", ex); ReportError(ex.Message); } }); }
+        catch (Exception ex) { AppLog.Write("config-watch", ex); }
     }
+
     private void WindowsPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
     {
         if (!IsExiting) Dispatcher.BeginInvoke(() => { if (!IsExiting) ThemeService.Apply(Config.Theme, Config.Material); });
@@ -371,9 +373,10 @@ public partial class App : Application
     public void ExitApplication() { if (IsExiting) return; IsExiting = true; Shutdown(); }
     protected override void OnExit(ExitEventArgs e)
     {
-        IsExiting = true; _captureCancellation?.Cancel(); _shellCancellation?.Cancel(); _watcher?.Dispose(); _reload?.Stop(); _input?.Dispose(); _shell.Dispose(); _contexts.Dispose();
+        IsExiting = true; _captureCancellation?.Cancel(); _shellCancellation?.Cancel(); _watcher?.Dispose(); _input?.Dispose(); _shell.Dispose(); _contexts.Dispose();
         SystemEvents.UserPreferenceChanged -= WindowsPreferenceChanged;
         DispatcherUnhandledException -= DispatcherFailure; TaskScheduler.UnobservedTaskException -= UnobservedFailure;
+        AppDomain.CurrentDomain.UnhandledException -= DomainFailure;
         _wakeWait?.Unregister(null); _exitWait?.Unregister(null); _wake?.Dispose(); _exitSignal?.Dispose();
         if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
         if (_mutex != null) { try { _mutex.ReleaseMutex(); } catch (ApplicationException) { } _mutex.Dispose(); }

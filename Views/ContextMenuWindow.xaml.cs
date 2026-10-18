@@ -12,6 +12,8 @@ namespace BetterCM.Views;
 
 public partial class ContextMenuWindow : Window
 {
+    public IMenuHost? Host { get; set; }
+    private IMenuHost MenuHost => Host ?? RootMenu.Host ?? Application.Current as IMenuHost ?? throw new InvalidOperationException("菜单宿主不可用");
     private List<MenuAction> _primary = [], _more = [], _shell = [], _toolbar = [];
     private bool _expanded;
     private int _x, _y, _generation;
@@ -127,7 +129,9 @@ public partial class ContextMenuWindow : Window
         ActionsList.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler((_, e) => { if (e.VerticalChange != 0) CloseSubmenu(); }));
         SizeChanged += (_, _) => PublishBounds();
     }
-    public int ShowAt(int x, int y, SelectedContext context, AppConfig config, List<MenuAction> toolbar, List<MenuAction> primary, List<MenuAction> more, bool activate = true, List<MenuAction>? shell = null, string? shellError = null, IReadOnlyList<ShellMenuNode>? nativeMenu = null, Func<Task>? nativeRefresh = null, Func<int?, Task<NativeMenuPage>>? nativeLoad = null)
+    public int ShowAt(MenuPresentationRequest request) => ShowAt(request.X, request.Y, request.Context, request.Config, request.Toolbar, request.Primary, request.More, request.Activate, request.Shell, request.ShellError, request.NativeMenu, request.NativeRefresh, request.NativeLoad);
+
+    internal int ShowAt(int x, int y, SelectedContext context, AppConfig config, List<MenuAction> toolbar, List<MenuAction> primary, List<MenuAction> more, bool activate = true, List<MenuAction>? shell = null, string? shellError = null, IReadOnlyList<ShellMenuNode>? nativeMenu = null, Func<Task>? nativeRefresh = null, Func<int?, Task<NativeMenuPage>>? nativeLoad = null)
     {
         try
         {
@@ -530,6 +534,17 @@ public partial class ContextMenuWindow : Window
     }
     private async void Action_Click(object sender, RoutedEventArgs e)
     {
+        try { await HandleActionAsync(sender); }
+        catch (Exception ex) { HandleActionFailure(ex); }
+    }
+    private void HandleActionFailure(Exception exception)
+    {
+        AppLog.Write("menu-action", exception);
+        RootMenu.CloseMenu("动作失败", true);
+        (Host ?? RootMenu.Host ?? Application.Current as IMenuHost)?.Notify(exception.Message, true);
+    }
+    private async Task HandleActionAsync(object sender)
+    {
         if (!IsOpen || sender is not Button button) return;
         if (button.Tag is MenuEntry { IsGroup: true } group) { OpenGroup(group); return; }
         var action = button.Tag is MenuEntry entry ? entry.Action : button.Tag as MenuAction;
@@ -539,7 +554,7 @@ public partial class ContextMenuWindow : Window
     {
         if (sender is Button { Tag: MenuEntry { Action.ShellKey: { } key } })
         {
-            ((App)Application.Current).ToggleShellPin(key); RootMenu._config = ((App)Application.Current).Config;
+            MenuHost.ToggleShellPin(key); RootMenu._config = MenuHost.Config;
             RootMenu.CloseSubmenu(); RootMenu.Rebuild(); RootMenu.Reposition();
         }
     }
@@ -563,41 +578,7 @@ public partial class ContextMenuWindow : Window
         }
         Rebuild(); if (IsVisible) Reposition();
     }
-    private async Task CompleteSearchAsync()
-    {
-        int generation = _generation;
-        try
-        {
-            var page = await (_loadingAll = _nativeLoad!(null));
-            if (_generation != generation || !IsOpen) return;
-            if (Search.Text.Length == 0)
-            {
-                // The user cleared search and returned to root browsing. Hydrate the
-                // completed tree in place without replacing root row containers or closing an open submenu.
-                _nativeState.AddCommands(page.Actions);
-                _nativeState.SetMenu(page.Menu);
-                var hydrated = _nativeState.Rows();
-                var current = VisibleRows;
-                for (int i = 0; i < Math.Min(current.Count, hydrated.Count); i++)
-                    if (current[i].IsGroup && current[i].DeferredSubmenu != null)
-                    {
-                        current[i].Children = hydrated[i].Children;
-                        current[i].DeferredSubmenu = null;
-                    }
-                return;
-            }
-            _nativeState.Reset(page.Menu, page.Actions); Rebuild(); Reposition(); RootMenu.PublishBounds();
-        }
-        catch (OperationCanceledException) { /* Superseded search completion leaves the visible menu alone. */ }
-        catch (Exception ex) { if (_generation == generation && IsOpen && Search.Text.Length > 0) ShowLoadError(ex); }
-        finally { if (_generation == generation) _loadingAll = null; }
-    }
-    private void ShowLoadError(Exception exception)
-    {
-        AppLog.Write("shell-expand", exception);
-        ShellStatus.Text = "子菜单读取失败，请重试或使用 Shift+右键"; ShellStatus.Visibility = Visibility.Visible; Reposition();
-    }
-    private void Settings_Click(object sender, RoutedEventArgs e) { CloseMenu("打开设置"); ((App)Application.Current).ShowSettings(); }
+    private void Settings_Click(object sender, RoutedEventArgs e) { CloseMenu("打开设置"); MenuHost.ShowSettings(); }
     private void Window_Deactivated(object sender, EventArgs e)
     {
         _activationSucceeded = false;
@@ -607,61 +588,5 @@ public partial class ContextMenuWindow : Window
         {
             if (RootMenu._generation == generation && RootMenu.IsOpen && !RootMenu.ContainsMenuHandle(NativeMethods.GetForegroundWindow())) RootMenu.CloseMenu("窗口失焦");
         }, System.Windows.Threading.DispatcherPriority.Input);
-    }
-    private async void Window_KeyDown(object sender, KeyEventArgs e)
-    {
-        var key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if (key == Key.ImeProcessed && !Search.IsKeyboardFocusWithin) key = e.ImeProcessedKey;
-        var modifiers = Keyboard.Modifiers;
-        if (Environment.GetEnvironmentVariable("BETTERCM_QA_REPORT") is { Length: > 0 } report)
-            try { File.AppendAllText(report + ".keys.jsonl", System.Text.Json.JsonSerializer.Serialize(new { Time = DateTimeOffset.Now, Key = key.ToString(), Original = e.Key.ToString(), Modifiers = modifiers.ToString(), SearchFocus = Search.IsKeyboardFocusWithin }) + "\n"); } catch { }
-        if (!IsOpen) { e.Handled = true; return; }
-        if (key == Key.Escape) { if (_parentMenu != null) ReturnToParent(); else CloseMenu("Escape"); e.Handled = true; return; }
-        if (key == Key.Left && modifiers == ModifierKeys.None && _parentMenu != null) { ReturnToParent(); e.Handled = true; return; }
-        if (key == Key.F10 && modifiers == ModifierKeys.Shift) { Expand(); e.Handled = true; return; }
-        if (key == Key.F && modifiers == ModifierKeys.Control) { FocusSearch(); e.Handled = true; return; }
-        if (Search.IsKeyboardFocusWithin && key == Key.Down && modifiers == ModifierKeys.None)
-        {
-            ActionsList.Focus(); ActionsList.SelectedItem = VisibleRows.FirstOrDefault(x => x.Enabled && !x.IsSeparator); e.Handled = true; return;
-        }
-        if (Search.IsKeyboardFocusWithin && !(key == Key.Enter || modifiers == ModifierKeys.Alt)) return;
-        var selected = ActionsList.SelectedItem as MenuEntry;
-        if (RootMenu._nativeMenu != null && modifiers is ModifierKeys.None or ModifierKeys.Alt && key >= Key.A && key <= Key.Z)
-        {
-            string mnemonic = ((char)('A' + key - Key.A)).ToString();
-            var matches = VisibleRows.Where(x => x.Enabled && x.Mnemonic == mnemonic).ToList();
-            if (matches.Count > 0)
-            {
-                e.Handled = true;
-                if (matches.Count > 1) { ActionsList.Focus(); ActionsList.SelectedItem = matches[(matches.FindIndex(x => x == selected) + 1) % matches.Count]; return; }
-                var match = matches[0];
-                if (match.IsGroup) OpenGroup(match, true);
-                else if (match.Action?.Execute is { } execute) { RootMenu.CloseMenu("原生访问键执行", true); await execute(); }
-                return;
-            }
-        }
-        if (RootMenu._nativeMenu != null && key == Key.F5 && modifiers == ModifierKeys.None && RootMenu._nativeRefresh is { } refresh)
-        { RootMenu.CloseMenu("原生视图刷新", true); e.Handled = true; await refresh(); return; }
-        if (modifiers == ModifierKeys.None && selected is { IsGroup: true } && key is Key.Right or Key.Left or Key.Enter)
-        {
-            if (key != Key.Left) OpenGroup(selected, focus: true);
-            e.Handled = true; return;
-        }
-        if (key == Key.Right && modifiers == ModifierKeys.None) { Expand(); e.Handled = true; return; }
-        string? id = (key, modifiers) switch
-        {
-            (Key.F5, ModifierKeys.None) => "refresh",
-            (Key.C, ModifierKeys.Control) => "copy", (Key.X, ModifierKeys.Control) => "cut",
-            (Key.V, ModifierKeys.Control) => "paste", (Key.F2, ModifierKeys.None) => "rename", (Key.Delete, ModifierKeys.None) => "delete",
-            (Key.Enter, ModifierKeys.Alt) => "properties",
-            (Key.T, ModifierKeys.None) => "terminal", (Key.C, ModifierKeys.None) => "code",
-            (Key.N, ModifierKeys.None) => "notepad", (Key.P, ModifierKeys.None) => "path",
-            (Key.U, ModifierKeys.None) => "slash", (Key.H, ModifierKeys.None) => "hash", _ => null
-        };
-        var action = RootMenu._nativeMenu != null
-            ? MenuKeyboard.NativeAction(RootMenu._nativeState.Rows(), key, modifiers)
-            : RootMenu._primary.Concat(RootMenu._more).Concat(RootMenu._toolbar).FirstOrDefault(x => x.Id == id && x.Enabled);
-        if (key == Key.Enter && modifiers == ModifierKeys.None) action = MenuKeyboard.EnterAction(VisibleRows, selected, RootMenu._nativeMenu != null);
-        if (action is { Enabled: true, Execute: not null }) { RootMenu.CloseMenu("键盘执行动作", true); e.Handled = true; await action.Execute(); }
     }
 }

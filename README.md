@@ -1,12 +1,12 @@
-# BetterCM 1.7.0
+# BetterCM 1.8.0
 
-BetterCM 为 Windows 11 的经典右键菜单提供现代外观。1.7.0 重点保护配置、改进长时间系统操作和后台异常处理，设置窗口可适应较小工作区，后台启动延迟创建设置页面。保留经用户复测有效的桌面挂件兼容调整。验证见 QA-1.7.0.md，审查建议的取舍见 REVIEW-1.7.0.md。
+BetterCM 为 Windows 11 的经典右键菜单提供现代外观。1.8.0 加固程序执行和配置迁移，新增脱敏诊断导出、稳定自检 ID 与统一构建门禁，并补充本轮发布脚本复查修复。当前验证见 [QA-1.8.0](docs/releases/1.8.0/QA-1.8.0.md)，逐条处理见 [审查实施记录](docs/current/REVIEW-IMPLEMENTATION.md)。
 
 ## 安装与使用
 
-运行项目根目录的 **BetterCM-1.7.0-Setup-x64.exe**。安装包包含 .NET/WPF 和 Windows App SDK 材质组件，无需另装运行时；可安装到原目录升级，沿用用户配置。默认目录是当前用户的 `%LOCALAPPDATA%\Programs\BetterCM`，不需要管理员权限。安装时可选择登录自启或桌面快捷方式，默认均不勾选。
+本地主仓库打包输出为 `artifacts/releases/1.8.0/BetterCM-1.8.0-Setup-x64.exe`，同版本内部副本位于 `artifacts/internal/1.8.0/`。当前包未签名，尚未上传公开发行；公开发行后请使用对应 Releases 附件。历史安装包保存在 `artifacts/releases/<version>/`。安装包包含 .NET/WPF 和 Windows App SDK 材质组件，无需另装运行时；可安装到原目录升级，沿用用户配置。默认目录是当前用户的 `%LOCALAPPDATA%\Programs\BetterCM`，不需要管理员权限。安装时可选择登录自启或桌面快捷方式，默认均不勾选。
 
-安装包尚未使用发行者代码签名。可用 `Get-FileHash .\BetterCM-1.7.0-Setup-x64.exe -Algorithm SHA256`，与同目录 `.exe.sha256` 文件核对。构建来源与完整载荷清单记录在版本验证文件中。
+安装包尚未使用发行者代码签名。可用 `Get-FileHash .\artifacts\releases\1.8.0\BetterCM-1.8.0-Setup-x64.exe -Algorithm SHA256`，与同目录 `.exe.sha256` 文件核对。构建来源与完整载荷清单记录在版本验证文件中。
 
 - 普通右键接管资源管理器文件视图、导航栏和桌面；开始按下前按住 Shift，可以使用原生菜单或原生右键拖动。
 - 默认“使用经典模式（推荐）”保持 Shell 返回的顺序、分隔线、子菜单、禁用、勾选、默认动作及访问键。只改变呈现，不重新合成 Git、打开方式、路径等分组，不自动插入内置或自定义命令。
@@ -48,18 +48,20 @@ dotnet test .\Tests\BetterCM.Tests.csproj -c Release
 .\Build-Installer.ps1
 ~~~
 
-verify.ps1 执行警告视为错误的构建、无界面 xUnit、自带运行时发布和 UI/Shell 自检。Build-Installer.ps1 通过同一门禁后生成安装包及 SHA256。发布目录为 artifacts\publish\win-x64；最终报告和测试夹具位于 artifacts\qa。GitHub Actions 调用 verify.ps1 -SkipDesktopChecks，仅执行构建、xUnit 和发布；桌面 UI/Shell 检查由本地默认门禁执行，打包不会跳过。本地项目尚未上传，远端工作流未运行。
+verify.ps1 执行脚本回归、锁文件恢复、传递依赖漏洞审计、警告视为错误的构建、xUnit、自带运行时发布和 UI/Shell 自检。Build-Installer.ps1 要求主仓库干净提交，经过同一门禁后生成安装包、SHA256 和带 SourceCommit 的 payload 清单。发布目录为 artifacts/publish/win-x64，报告在 artifacts/qa。
+
+GitHub Actions 配置涵盖锁文件恢复、漏洞审计、构建/测试/发布和安装器编译；桌面检查通过可选交互 runner 作业执行，另有 Dependabot 和 CodeQL 配置。无桌面作业显式使用 -SkipDesktopChecks，其安装包仅作为内部制品。远端工作流与交互 runner 尚未实跑，不据本机通过结果推定其状态。依赖审计报告中的项目路径已改为仓库相对路径。
 
 版本唯一来源是 BetterCM.csproj 的 Version，AppInfo 从程序集读取；manifest、可执行文件、设置、托盘、报告和安装包派生同一版本。artifacts、Backups、Tests 排除在产品默认资源扫描之外。
 
 ~~~powershell
 .\artifacts\publish\win-x64\BetterCM.exe --self-test .\artifacts\qa\manual-self-test.json
-.\artifacts\publish\win-x64\BetterCM.exe --stress-test .\artifacts\qa\stress-1.7.0.json
-.\artifacts\publish\win-x64\BetterCM.exe --input-check .\artifacts\qa\input-1.7.0.json
-.\artifacts\publish\win-x64\BetterCM.exe --cascade-input-check .\artifacts\qa\cascade-1.7.0.json
+.\artifacts\publish\win-x64\BetterCM.exe --stress-test .\artifacts\qa\stress-1.8.0.json
+.\artifacts\publish\win-x64\BetterCM.exe --input-check .\artifacts\qa\input-1.8.0.json
+.\artifacts\publish\win-x64\BetterCM.exe --cascade-input-check .\artifacts\qa\cascade-1.8.0.json
 ~~~
 
-以上是生成报告的命令示例，不表示这些输出文件已经存在。本次实际执行的检查、输出位置和未覆盖范围以 QA-1.7.0.md 为准。
+以上是生成报告的命令示例，不表示这些输出文件已经存在。本次实际执行的检查、输出位置和未覆盖范围以 [QA-1.8.0](docs/releases/1.8.0/QA-1.8.0.md) 为准。
 
 自检使用新建的临时夹具进行真实原生复制、移动及无副作用的视图刷新，检查回收站命令但不清空用户回收站。压力检查使用 40 秒假命令及卡住捕获夹具。两种输入检查需要按界面提示操作，只调用记录委托。
 
@@ -76,8 +78,34 @@ verify.ps1 执行警告视为错误的构建、无界面 xUnit、自带运行时
 
 读取系统菜单后按最终尺寸首次显示，因此慢扩展可能延后出现；执行超时只断开通信，保留执行宿主及原生操作。视图位置或选区变化时拒绝执行旧快照。安装包尚未使用发行者代码签名。
 
-修改前完整备份：Backups\BetterCM-1.2.0-before-1.3.0-20261014-032538.zip，17857 个文件逐一核对大小和 SHA256，附清单和压缩包校验文件。旧版本安装包及历史备份保留。
+历史完整备份与发布包继续保留；本轮维护只对较旧构建目录先压缩、逐文件校验再移除。旧备份线索见 [历史备份证据](docs/history/backup-evidence.md)。
 
-1.0.1 布局与性能迭代的历史备份为 Backups\BetterCM-1.0.1-before-layout-perf-20261013-192047.zip，12584 文件逐一校验；同目录保存旧安装包。该历史迭代按用户要求保留 1.0.1 版本号，用 SHA256 区分构建。
+详见 [更新记录](CHANGELOG.md)、[架构](ARCHITECTURE.md)、[当前验证记录](docs/releases/1.8.0/QA-1.8.0.md) 和 [本轮审查处理记录](docs/current/REVIEW-IMPLEMENTATION.md)。项目源码按 [MIT 许可证](LICENSE) 授权。图标的独立来源与授权尚待确认，第三方许可见 [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES.md)。
 
-详见 [更新记录](CHANGELOG.md)、[架构](ARCHITECTURE.md)、[当前验证记录](QA-1.7.0.md)、[本轮审查处理记录](REVIEW-1.7.0.md) 和 [交接](HANDOFF-1.7.0.md)。本仓库尚未指定项目自身的开源许可证；本轮不代维护者选择 MIT 或 Apache-2.0。第三方许可见 THIRD-PARTY-NOTICES.md。
+
+## 审查加固与开发
+
+界面目前仅提供简体中文。源码按 MIT 授权，第三方组件按各自许可分发。
+
+- 统一入口为 `BetterCM.slnx`；共享设置与依赖版本分别位于 `Directory.Build.props`、`Directory.Packages.props`。
+- 运行 `./verify.ps1` 检查锁文件、依赖漏洞、Release 编译、测试、自包含发布及桌面自检；无交互桌面时显式使用 `-SkipDesktopChecks`，UI 变更仍需提供手工 QA 证据。
+- 自定义程序在编辑时固定为绝对 `.exe` / `.com` 路径；脚本需显式选择解释器。旧 schema 1 配置在内存中迁移至 2，不可解析的旧动作会禁用并保留供编辑修复。保存前不会改写原文件，保存后保留旧配置备份；旧程序不支持 schema 2。
+- 设置的诊断页可“导出诊断包”。包含版本、系统、DPI、脱敏配置和最近日志摘要；路径、用户名、文件名、自定义标题及参数、原始日志消息与堆栈均不导出。分享前仍请查看包内容。
+- `./Maintenance.ps1` 默认仅显示计划；`-Apply` 创建源码快照和完整 Git bundle，校验压缩包后才移除较旧的 dev/installer-build 目录。保留每类最近 3 个构建目录、所有已有历史备份、release payload 和 QA 原目录。常见未跟踪源码和文档自动纳入，`-AdditionalSource` 可显式加入其他必要文件，运行时应停止其他构建。该脚本使用类型白名单识别未跟踪源码，不将构建产物混入源码备份。
+- 安装包与校验文件不再跟踪进 Git。完整发布输出在 `artifacts/releases/<version>/`；跳过桌面验证的内部包在 `artifacts/internal/<version>/`，上传公开下载应使用 Releases 或制品库。
+- 没有证书也能构建未签名包。以后取得代码签名证书，可用 `./Build-Installer.ps1 -RequireSigning -CertificateThumbprint <指纹> -SignToolPath <Windows SDK 中 signtool.exe 的完整路径>`，为自有程序、安装包及卸载器签名并加时间戳；当前未声称任何历史安装包已签名。
+
+本次变更和外部待办见 [审查实施记录](docs/current/REVIEW-IMPLEMENTATION.md)，历史验证记录在 [docs/releases](docs/releases/)。
+
+
+## 本轮复查与发布边界
+
+自定义动作默认使用程序所在目录作为工作目录。只有在编辑窗口勾选“使用目标文件夹作为工作目录”后才切换到目标目录；此选项可能让第三方程序从目标目录加载 DLL/插件，请仅对确有需要的程序启用。`{dir}` 参数的含义不受该选项影响。旧配置缺少该选项时默认关闭。
+
+首次初始化会在程序名解析前清理旧的 bundled 默认动作；用户配置中的自定义动作不会因此被删除。恢复 schema 1 备份会将迁移后的当前格式写回配置文件，同时保留备份原文和损坏副本。
+
+正式签名发布目前明确阻塞于代码签名证书：没有证书，未完成真实签名、时间戳及信任链的成功演练。`SignedUninstaller` 的临时卸载器由签名回调保存为 `signed-uninstaller.exe` 并校验，不依赖编译结束后查找安装目录的 `unins000.exe`。脚本回归使用测试替身验证回调文件处理，不能代替真实签名演练。
+
+`Test-Installer.ps1` 默认是 Release 门禁，必须存在主仓库对应的最终安装包和匹配的 payload 清单；只验证内部包时必须显式传入 `-ReleaseKind Internal`，报告会标明类型。候选源码 bundle 继续作为历史过程证据，本轮发布源改为主仓库提交和本地 annotated tag `v1.8.0`。没有执行远端推送。
+
+`Maintenance.ps1 -Apply -KeepRecent 3` 保留已有历史备份、所有 release payload 和 QA 原目录，回收量来自压缩后的旧构建目录，不能声称会删除或回收全部 53 GB 备份。额外加入 `-IncludeVerificationFixtures` 可将本轮已保留源码 bundle 的 clean-build-fixture 目录先归档校验再移除。默认不执行该额外范围。

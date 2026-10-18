@@ -41,6 +41,8 @@ public partial class App
         ReportError(recoverable ? "操作未完成，请重试。" : "界面遇到异常，已暂停右键接管。请重启 BetterCM；暂时可使用 Windows 右键菜单。");
         args.Handled = true;
     }
+    private void DomainFailure(object sender, UnhandledExceptionEventArgs args)
+        => AppLog.Write("unhandled-domain", args.ExceptionObject as Exception ?? new Exception("非托管异常对象：" + args.ExceptionObject?.GetType().Name));
     private void UnobservedFailure(object? sender, UnobservedTaskExceptionEventArgs args)
     {
         AppLog.Write("unobserved-task", args.Exception); args.SetObserved();

@@ -14,6 +14,7 @@ public sealed class CustomActionItem
     public string Executable { get; set; } = "";
     public string Arguments { get; set; } = "\"{path}\"";
     public bool RunAsAdmin { get; set; }
+    public bool UseTargetWorkingDirectory { get; set; }
     public bool Enabled { get; set; } = true;
     public bool IsPrimary { get; set; } = true;
     public string SelectionMode { get; set; } = "single";
@@ -21,7 +22,8 @@ public sealed class CustomActionItem
 }
 public sealed class AppConfig
 {
-    public int SchemaVersion { get; set; } = 1;
+    public const int CurrentSchemaVersion = 2;
+    public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string GlobalHotkey { get; set; } = "Alt+X";
     public bool ReplaceExplorerMenu { get; set; } = true;
     public bool EnableAnimations { get; set; } = true;
@@ -76,8 +78,7 @@ public sealed class ConfigStore
             {
                 try
                 {
-                    Current = ConfigJson.Deserialize(File.ReadAllText(legacy)) ?? new();
-                    Current.CustomActions.RemoveAll(x => (x.Executable is "code" or "wt.exe" or "notepad.exe") && (x.Arguments is "\"{path}\"" or "-d \"{dir}\""));
+                    Current = ConfigJson.Deserialize(ConfigMigrations.Migrate(File.ReadAllText(legacy), removeLegacyDefaults: true)) ?? new();
                 }
                 catch (Exception ex) { CanSave = false; LastError = "默认配置读取失败，已暂停保存：" + ex.Message; return false; }
             }
@@ -89,7 +90,7 @@ public sealed class ConfigStore
         {
             original = File.ReadAllText(FilePath);
             _hasDiskSnapshot = true; _diskText = original;
-            var next = ConfigJson.Deserialize(original) ?? throw new InvalidDataException("配置为空");
+            var next = ConfigJson.Deserialize(ConfigMigrations.Migrate(original)) ?? throw new InvalidDataException("配置为空");
             Validate(next);
             Current = next;
             CanSave = true; LastError = null; InvalidCopyPath = null; _invalidHash = null;
@@ -151,12 +152,13 @@ public sealed class ConfigStore
         try
         {
             string text = File.ReadAllText(BackupPath);
-            var restored = ConfigJson.Deserialize(text) ?? throw new InvalidDataException("备份为空");
+            var restored = ConfigJson.Deserialize(ConfigMigrations.Migrate(text)) ?? throw new InvalidDataException("备份为空");
             Validate(restored);
             // Preserve an unreadable original before an explicit recovery, including
             // recovery requested before Load has run.
             if (File.Exists(FilePath) && !Load() && InvalidCopyPath == null)
                 throw new IOException("无法保留原配置副本，请先手动备份原文件。");
+            text = ConfigJson.Serialize(restored);
             WriteAtomic(text, false);
             _hasDiskSnapshot = true; _diskText = text;
             Current = restored; CanSave = true; LastError = null; InvalidCopyPath = null; _invalidHash = null;
@@ -186,7 +188,7 @@ public sealed class ConfigStore
     }
     public static void Validate(AppConfig config)
     {
-        if (config.SchemaVersion != 1) throw new InvalidDataException("此版本不支持该配置格式，请使用兼容的 BetterCM 版本。");
+        if (config.SchemaVersion != AppConfig.CurrentSchemaVersion) throw new InvalidDataException("此版本不支持该配置格式，请使用兼容的 BetterCM 版本。");
         BetterCM.Services.Hotkey.Parse(config.GlobalHotkey);
         if (config.Theme is not ("system" or "dark" or "light")) throw new InvalidDataException("主题应为 system、dark 或 light");
         if (config.Material is not ("mica" or "acrylic" or "solid")) throw new InvalidDataException("材质应为 mica、acrylic 或 solid");
@@ -204,6 +206,7 @@ public sealed class ConfigStore
         foreach (var action in config.CustomActions)
         {
             if (action is null || string.IsNullOrWhiteSpace(action.Title) || string.IsNullOrWhiteSpace(action.Executable)) throw new InvalidDataException("自定义动作需要名称和程序路径");
+            if (action.Enabled && (!Path.IsPathFullyQualified(action.Executable) || !BetterCM.Services.ExecutableResolver.IsProgram(action.Executable))) throw new InvalidDataException("自定义动作需要 .exe 或 .com 的完整路径，请重新编辑该动作。");
             if (action.Arguments is null || action.MatchExtensions is null || action.MatchExtensions.Any(x => x is null)) throw new InvalidDataException("动作参数和扩展名列表不能为 null");
             if (action.SelectionMode is not ("single" or "each" or "batch")) throw new InvalidDataException("多选模式应为 single、each 或 batch");
             if (action.SelectionMode == "batch" && !BetterCM.Services.ActionExecutor.ParseArguments(action.Arguments).Contains("{paths}", StringComparer.Ordinal))

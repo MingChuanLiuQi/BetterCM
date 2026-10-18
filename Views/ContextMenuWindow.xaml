@@ -1,4 +1,4 @@
-<Window x:Class="BetterCM.Views.ContextMenuWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" Style="{StaticResource {x:Type Window}}" Title="BetterCM 菜单" Width="320" SizeToContent="Height" WindowStyle="SingleBorderWindow" AllowsTransparency="False" Background="{DynamicResource WindowBg}" ShowInTaskbar="False" Topmost="True" ResizeMode="NoResize" InputMethod.IsInputMethodEnabled="False" Deactivated="Window_Deactivated" PreviewKeyDown="Window_KeyDown">
+<Window x:Class="BetterCM.Views.ContextMenuWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:BetterCM.Views" xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" Style="{StaticResource {x:Type Window}}" Title="BetterCM 菜单" Width="320" SizeToContent="Height" WindowStyle="SingleBorderWindow" AllowsTransparency="False" Background="{DynamicResource WindowBg}" ShowInTaskbar="False" Topmost="True" ResizeMode="NoResize" InputMethod.IsInputMethodEnabled="False" Deactivated="Window_Deactivated" PreviewKeyDown="Window_KeyDown">
   <shell:WindowChrome.WindowChrome>
     <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="0" GlassFrameThickness="1" CornerRadius="8" UseAeroCaptionButtons="False" />
   </shell:WindowChrome.WindowChrome>
@@ -97,7 +97,7 @@
                   <ColumnDefinition Width="*" />
                   <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Button x:Name="EntryButton" Style="{StaticResource MenuButton}" IsTabStop="False" Tag="{Binding}" IsEnabled="{Binding Enabled}" Click="Action_Click" MouseEnter="Action_Enter" MouseLeave="Action_Leave" ToolTip="{Binding Detail}" AutomationProperties.Name="{Binding Title}" AutomationProperties.HelpText="{Binding Detail}">
+                <local:MenuItemButton x:Name="EntryButton" Style="{StaticResource MenuButton}" IsTabStop="False" Tag="{Binding}" IsEnabled="{Binding Enabled}" Click="Action_Click" MouseEnter="Action_Enter" MouseLeave="Action_Leave" ToolTip="{Binding Detail}" AutomationProperties.Name="{Binding Title}" AutomationProperties.HelpText="{Binding Detail}">
                   <Grid>
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="26" />
@@ -114,7 +114,7 @@
                     <TextBlock x:Name="EntryHint" Grid.Column="3" Text="{Binding Hint}" ToolTip="{Binding Hint}" MaxWidth="120" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource MutedBrush}" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center" />
                     <TextBlock x:Name="Chevron" Grid.Column="4" Visibility="Collapsed" Text="" FontFamily="Segoe Fluent Icons" FontSize="10" Margin="8,0,0,0" VerticalAlignment="Center" />
                   </Grid>
-                </Button>
+                </local:MenuItemButton>
                 <Button x:Name="Pin" Grid.Column="1" Padding="7" Tag="{Binding}" Click="Pin_Click" ToolTip="固定到一级菜单 / 取消固定" AutomationProperties.Name="固定到一级菜单">
                   <Button.Style>
                     <Style TargetType="Button" BasedOn="{StaticResource MenuButton}">

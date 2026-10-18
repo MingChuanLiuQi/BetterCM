@@ -2,10 +2,10 @@ using System.Runtime.InteropServices;
 namespace BetterCM.Services;
 internal static class ComServiceChecks
 {
-    internal static async Task RunAsync(Action<string, bool, string?> check)
+    internal static async Task RunAsync(Action<CheckIdentity, bool, string?> check)
     {
         nint desktop = NativeMethods.FindWindow("Progman", null);
-        if (desktop == 0) { check("真实 Shell 视图服务可从 RPC apartment 查询", false, "未找到桌面视图"); return; }
+        if (desktop == 0) { check(new CheckIdentity("ComService/C001", "真实 Shell 视图服务可从 RPC apartment 查询"), false, "未找到桌面视图"); return; }
         using var view = ShellViewBinding.Open(desktop, Environment.GetFolderPath(Environment.SpecialFolder.Desktop));
         int result = await Task.Run(() =>
         {
@@ -20,7 +20,7 @@ internal static class ComServiceChecks
             }
             finally { if (initialized >= 0) CoUninitialize(); }
         });
-        check("真实 Shell 视图服务可从 RPC apartment 查询", result >= 0, $"HRESULT=0x{result:X8}");
+        check(new CheckIdentity("ComService/C001", "真实 Shell 视图服务可从 RPC apartment 查询"), result >= 0, $"HRESULT=0x{result:X8}");
     }
     [DllImport("ole32.dll")] private static extern int CoInitializeEx(nint reserved, uint flags);
     [DllImport("ole32.dll")] private static extern void CoUninitialize();
