@@ -39,7 +39,11 @@ public sealed class ExplorerContextService : IDisposable
                 Stop();
                 var name = "BetterCM.Context." + Guid.NewGuid().ToString("N");
                 _pipe = new(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-                _process = BackgroundProcess.Start(Environment.ProcessPath!, _testHost ? "--context-test-host" : "--context-host", name);
+                string hostMode = "--context-host";
+#if QA
+                if (_testHost) hostMode = "--context-test-host";
+#endif
+                _process = BackgroundProcess.Start(Environment.ProcessPath!, hostMode, name);
                 await _pipe.WaitForConnectionAsync(deadline.Token);
                 _reader = new(_pipe, new UTF8Encoding(false), false, 4096, true);
                 _writer = new(_pipe, new UTF8Encoding(false), 4096, true);
@@ -87,8 +91,12 @@ public sealed class ExplorerContextService : IDisposable
                 {
                     try
                     {
+#if QA
                         if (test && request.ClipboardPaths.Contains("stall")) Thread.Sleep(40000);
                         return new ContextResponse(request.Id, test ? Build([], AppContext.BaseDirectory, "Test capture", "测试捕获", true) : Capture(request), StartupFlags: BackgroundProcess.StartupFlags());
+#else
+                        return new ContextResponse(request.Id, Capture(request), StartupFlags: BackgroundProcess.StartupFlags());
+#endif
                     }
                     catch (Exception ex) { AppLog.Write("context", ex); return new ContextResponse(request.Id, Error: ex.Message); }
                 });
@@ -133,11 +141,12 @@ public sealed class ExplorerContextService : IDisposable
         if (navigation) throw new InvalidOperationException("无法确认导航栏节点");
         return null;
     }
+    internal static bool UsesExplorerContext(string kind) => kind is "CabinetWClass" or "Progman" or "WorkerW";
     private static SelectedContext Capture(ContextRequest request)
     {
         nint window = (nint)request.Window;
         var kind = NativeMethods.ClassName(window);
-        if (kind is not ("CabinetWClass" or "Progman" or "WorkerW"))
+        if (!UsesExplorerContext(kind))
             return Build(request.ClipboardPaths.Where(x => File.Exists(x) || Directory.Exists(x)).ToArray(), "", "", "剪贴板路径", false);
         var com = new List<object>();
         object Own(object value) { com.Add(value); return value; }

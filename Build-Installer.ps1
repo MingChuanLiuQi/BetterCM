@@ -1,16 +1,26 @@
 param([string]$Compiler = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
     [switch]$SkipDesktopChecks, [switch]$RequireSigning, [string]$CertificateThumbprint,
-    [string]$SignToolPath, [string]$TimestampServer = 'https://timestamp.digicert.com')
+    [string]$SignToolPath, [string]$TimestampServer = 'https://timestamp.digicert.com', [switch]$ReuseVerifiedPublish)
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
-[xml]$project = Get-Content -LiteralPath (Join-Path $projectRoot 'BetterCM.csproj') -Raw
-$version = [string]$project.Project.PropertyGroup.Version
+$version = & (Join-Path $projectRoot 'Read-Version.ps1')
 if (-not (Test-Path -LiteralPath $Compiler)) { throw 'Install Inno Setup 6.5+ or supply -Compiler with ISCC.exe path.' }
 $sourceCommit = & git -C $projectRoot rev-parse HEAD
 if ($LASTEXITCODE -ne 0 -or (& git -C $projectRoot status --porcelain)) { throw 'Installer requires a committed, clean source tree.' }
 if ($RequireSigning -and -not $CertificateThumbprint) { throw 'Public signed releases require a code-signing certificate.' }
 . (Join-Path $projectRoot 'Installer\Signing.ps1')
-& (Join-Path $projectRoot 'verify.ps1') -SkipDesktopChecks:$SkipDesktopChecks -CertificateThumbprint $CertificateThumbprint -SignToolPath $SignToolPath -TimestampServer $TimestampServer -RequireSignedPublish:$RequireSigning
+if ($ReuseVerifiedPublish) {
+    . (Join-Path $projectRoot 'Installer\VerificationReceipt.ps1')
+    $receipt = Get-Content -LiteralPath (Join-Path $projectRoot 'artifacts\qa\verified-publish.json') -Raw | ConvertFrom-Json
+    $verifiedPath = Join-Path $projectRoot 'artifacts\publish\win-x64'
+    Assert-VerifiedPublish $verifiedPath $receipt $version $sourceCommit (-not [bool]$SkipDesktopChecks)
+    & (Join-Path $projectRoot 'Installer\Test-ProductionBinary.ps1') -Path (Join-Path $verifiedPath 'BetterCM.dll')
+    if ($RequireSigning -or $CertificateThumbprint) {
+        foreach ($name in @('BetterCM.exe', 'BetterCM.dll')) { Assert-ArtifactSignature (Join-Path $verifiedPath $name) $CertificateThumbprint }
+    }
+} else {
+    & (Join-Path $projectRoot 'verify.ps1') -SkipDesktopChecks:$SkipDesktopChecks -CertificateThumbprint $CertificateThumbprint -SignToolPath $SignToolPath -TimestampServer $TimestampServer -RequireSignedPublish:$RequireSigning
+}
 if ((& git -C $projectRoot rev-parse HEAD) -ne $sourceCommit -or (& git -C $projectRoot status --porcelain)) { throw 'Source tree changed during verification.' }
 if (-not $SkipDesktopChecks) {
     $published = Get-Content -LiteralPath (Join-Path $projectRoot 'artifacts\qa\published-tests.json') -Raw | ConvertFrom-Json

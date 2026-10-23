@@ -11,7 +11,8 @@ public sealed class HardeningTests : IDisposable
     public HardeningTests() => Directory.CreateDirectory(_root);
     public void Dispose() => Directory.Delete(_root, true);
 
-    [Fact] public void BuiltinSystemProgramsUseExistingAbsolutePaths()
+    [Fact]
+    public void BuiltinSystemProgramsUseExistingAbsolutePaths()
     {
         foreach (var path in new[] { ExecutableResolver.WindowsPowerShell, ExecutableResolver.SystemProgram("notepad.exe"), ExecutableResolver.SystemProgram("msiexec.exe") })
         {
@@ -21,7 +22,8 @@ public sealed class HardeningTests : IDisposable
         }
     }
 
-    [Fact] public void PlantingProgramInTargetCannotOverridePinnedProgram()
+    [Fact]
+    public void PlantingProgramInTargetCannotOverridePinnedProgram()
     {
         string trusted = Path.Combine(_root, "trusted"), target = Path.Combine(_root, "target");
         Directory.CreateDirectory(trusted); Directory.CreateDirectory(target);
@@ -46,7 +48,8 @@ public sealed class HardeningTests : IDisposable
         Assert.Null(ExecutableResolver.Resolve(path));
         Assert.Throws<InvalidOperationException>(() => ActionExecutor.CreateStartInfo(path));
     }
-    [Fact] public void SchemaOneMigratesInMemoryAndKeepsOriginalUntilSave()
+    [Fact]
+    public void SchemaOneMigratesInMemoryAndKeepsOriginalUntilSave()
     {
         string path = Path.Combine(_root, "config.json");
         string legacy = "{\"SchemaVersion\":1,\"Theme\":\"dark\",\"CustomActions\":[{\"Title\":\"old\",\"Executable\":\"BetterCM-missing-program\"}]}";
@@ -81,7 +84,8 @@ public sealed class HardeningTests : IDisposable
         var store = new ConfigStore(path); Assert.False(store.Load()); Assert.False(store.Save(new()));
         Assert.Equal(json, File.ReadAllText(path)); Assert.Equal(json, File.ReadAllText(store.InvalidCopyPath!));
     }
-    [Fact] public void DiagnosticsExcludeUserSuppliedPathsTitlesAndLogMessages()
+    [Fact]
+    public void DiagnosticsExcludeUserSuppliedPathsTitlesAndLogMessages()
     {
         const string secret = "PRIVATE-FILENAME-username-秘密";
         var config = new AppConfig { CustomActions = [new() { Title = secret, Executable = @"C:\private\" + secret + ".exe", Arguments = secret, MatchExtensions = [secret] }], PinnedShellActions = [secret] };
@@ -92,7 +96,8 @@ public sealed class HardeningTests : IDisposable
         Assert.Contains(archive.Entries, x => x.FullName == "BetterCM.log.summary.json");
         foreach (var entry in archive.Entries) { using var reader = new StreamReader(entry.Open()); string text = reader.ReadToEnd(); Assert.DoesNotContain(secret, text); Assert.DoesNotContain(@"C:\\Users", text); }
     }
-    [Fact] public async Task LogicCheckIdsAreUniqueAndDisplayNamesDoNotDefineIdentity()
+    [Fact]
+    public async Task LogicCheckIdsAreUniqueAndDisplayNamesDoNotDefineIdentity()
     {
         var results = await LogicChecks.RunAsync(Path.Combine(_root, "logic"));
         Assert.All(results, result => Assert.False(string.IsNullOrWhiteSpace(result.Id)));
@@ -101,7 +106,8 @@ public sealed class HardeningTests : IDisposable
         var second = new RegressionCheck(new CheckIdentity("Menu/Stable", "新名称"), true);
         Assert.Equal(first.Id, second.Id);
     }
-    [Fact] public async Task CrossProcessProbeReaderRetriesTemporarySharingViolations()
+    [Fact]
+    public async Task CrossProcessProbeReaderRetriesTemporarySharingViolations()
     {
         string report = Path.Combine(_root, "probe.json"); File.WriteAllText(report, "{}");
         var held = new FileStream(report, FileMode.Open, FileAccess.ReadWrite, FileShare.None);

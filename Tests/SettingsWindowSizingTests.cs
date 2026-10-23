@@ -6,9 +6,12 @@ namespace BetterCM.Tests;
 public sealed class SettingsWindowSizingTests
 {
     [Theory]
-    [InlineData(1366, 728, 1)] [InlineData(1920, 1040, 1.5)]
-    [InlineData(1920, 1040, 1.75)] [InlineData(1920, 1040, 2)]
-    [InlineData(1366, 728, 1.25)] [InlineData(1366, 728, 2)]
+    [InlineData(1366, 728, 1)]
+    [InlineData(1920, 1040, 1.5)]
+    [InlineData(1920, 1040, 1.75)]
+    [InlineData(1920, 1040, 2)]
+    [InlineData(1366, 728, 1.25)]
+    [InlineData(1366, 728, 2)]
     public void MainWindowAndMinimumFitInsideScaledWorkArea(double width, double height, double scale)
     {
         double workWidth = width / scale, workHeight = height / scale;

@@ -32,13 +32,13 @@ internal static class BackdropUiChecks
                 check(new CheckIdentity("BackdropUi/C003" + "/" + material + "/" + light + "/" + compact, "三级菜单与复用窗口材质一致：" + label),
                     levels.All(x => x.HasTransparentContentWindow && x.ContentCoversWindow &&
                         ThemeService.HasStableMenuBackdrop(x) == active &&
-                        (!active || ThemeService.MenuMaterial(x) == material) &&
+                        (!active || ThemeService.MenuMaterial(x) == material && ThemeService.MenuTintOpacity(x) <= 0.45f && ThemeService.MenuLuminosityOpacity(x) <= 0.65f) &&
                         ((SolidColorBrush)x.FindResource("MenuSurfaceBg")).Color.A == (active ? light ? 12 : 8 : 255)),
                     string.Join("; ", levels.Select(x => $"{ThemeService.MenuMaterial(x)}; active={ThemeService.HasStableMenuBackdrop(x)}; cover={x.ContentCoversWindow}; alpha={((SolidColorBrush)x.FindResource("MenuSurfaceBg")).Color.A}; layout={System.Text.Json.JsonSerializer.Serialize(x.LayoutState)}")));
                 // DWMWA_USE_HOSTBACKDROPBRUSH is set-only on this Windows build:
                 // DwmGetWindowAttribute returns E_INVALIDARG, not the flag's value.
                 check(new CheckIdentity("BackdropUi/C002" + "/" + material + "/" + light + "/" + compact, "每级 HWND 成功启用或释放亚克力背景画刷：" + label),
-                    levels.All(x => ThemeService.MenuHostBackdropEnabled(x) == (active && material == "acrylic")), null);
+                    levels.All(x => ThemeService.MenuHostBackdropEnabled(x) == active), null);
                 foreach (bool highContrast in new[] { false, true })
                 {
                     ThemeService.ApplyResolved(light, "acrylic", highContrast, false);

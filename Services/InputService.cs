@@ -53,6 +53,7 @@ public sealed class InputService : IDisposable
     }
     public string Status { get; private set; } = "";
     public bool PrimaryHotkeyAvailable { get; private set; }
+    public bool InterceptionActive => _enabled && Volatile.Read(ref _mouseHook) != 0;
     public nint Handle => _handle;
     public InputService()
     {
@@ -71,24 +72,30 @@ public sealed class InputService : IDisposable
         PrimaryHotkeyAvailable = primary;
         var fallback = key != Hotkey.Parse("Ctrl+Shift+X") && NativeMethods.RegisterHotKey(Handle, 2, NativeMethods.MOD_NOREPEAT | NativeMethods.MOD_CONTROL | NativeMethods.MOD_SHIFT, 'X');
         _enabled = replace;
+        if (_mouseThread != null && Volatile.Read(ref _mouseHook) == 0)
+        {
+            if (Volatile.Read(ref _mouseThreadId) is var threadId && threadId != 0) NativeMethods.PostThreadMessage(threadId, NativeMethods.WM_QUIT, 0, 0);
+            if (_mouseThread.Join(1000)) { _mouseThread = null; Volatile.Write(ref _mouseThreadId, 0); }
+        }
         if (_mouseThread == null) StartMouseThread();
         string fallbackStatus = key == Hotkey.Parse("Ctrl+Shift+X") ? "与主快捷键相同" : fallback ? "可用" : "不可用";
-        Status = $"快捷键 {hotkey}：{(primary ? "可用" : "已被占用")}\n备用快捷键 Ctrl+Shift+X：{fallbackStatus}\n右键菜单：{(replace && _mouseHook != 0 ? "使用 BetterCM" : replace ? "启用失败，请尝试重启 BetterCM" : "使用 Windows 菜单")}";
+        Status = $"快捷键 {hotkey}：{(primary ? "可用" : "已被占用")}\n备用快捷键 Ctrl+Shift+X：{fallbackStatus}\n右键菜单：{(replace && Volatile.Read(ref _mouseHook) != 0 ? "使用 BetterCM" : replace ? "启用失败，重新保存设置可重试" : "使用 Windows 菜单")}";
     }
     private void StartMouseThread()
     {
-        var ready = new ManualResetEventSlim();
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _mouseThread = new Thread(() =>
         {
-            _mouseThreadId = NativeMethods.GetCurrentThreadId();
-            _mouseHook = NativeMethods.SetWindowsHookEx(NativeMethods.WH_MOUSE_LL, _callback, NativeMethods.GetModuleHandle(null), 0);
+            Volatile.Write(ref _mouseThreadId, NativeMethods.GetCurrentThreadId());
+            Volatile.Write(ref _mouseHook, NativeMethods.SetWindowsHookEx(NativeMethods.WH_MOUSE_LL, _callback, NativeMethods.GetModuleHandle(null), 0));
             var eventHooks = new[] { NativeMethods.EVENT_SYSTEM_FOREGROUND, NativeMethods.EVENT_SYSTEM_MENUPOPUPSTART, NativeMethods.EVENT_SYSTEM_MOVESIZESTART, NativeMethods.EVENT_SYSTEM_MINIMIZESTART }.Select(e => NativeMethods.SetWinEventHook(e, e, 0, _windowCallback, 0, 0, NativeMethods.WINEVENT_OUTOFCONTEXT)).Where(h => h != 0).ToArray();
-            ready.Set();
+            ready.SetResult();
             try { while (NativeMethods.GetMessage(out var message, 0, 0, 0) > 0) { NativeMethods.TranslateMessage(ref message); NativeMethods.DispatchMessage(ref message); } }
-            finally { foreach (var hook in eventHooks) NativeMethods.UnhookWinEvent(hook); if (_mouseHook != 0) NativeMethods.UnhookWindowsHookEx(_mouseHook); _mouseHook = 0; }
-        }) { IsBackground = true, Name = "BetterCM mouse input" };
+            finally { foreach (var hook in eventHooks) NativeMethods.UnhookWinEvent(hook); if (Volatile.Read(ref _mouseHook) is var mouseHook && mouseHook != 0) NativeMethods.UnhookWindowsHookEx(mouseHook); Volatile.Write(ref _mouseHook, 0); }
+        })
+        { IsBackground = true, Name = "BetterCM mouse input" };
         _mouseThread.Start();
-        ready.Wait(TimeSpan.FromSeconds(2));
+        ready.Task.Wait(TimeSpan.FromSeconds(2));
     }
     private nint MouseCallback(int code, nint wp, nint lp)
     {
@@ -163,7 +170,7 @@ public sealed class InputService : IDisposable
         catch { /* Input must always continue if interception fails. */ }
         return owned ? 1 : Next(code, wp, lp);
     }
-    private nint Next(int code, nint wp, nint lp) => NativeMethods.CallNextHookEx(_mouseHook, code, wp, lp);
+    private nint Next(int code, nint wp, nint lp) => NativeMethods.CallNextHookEx(Volatile.Read(ref _mouseHook), code, wp, lp);
     private void QueueDismiss(MenuObservation menu, MenuDismissReason reason) => NativeMethods.PostMessage(Handle, NativeMethods.WM_DISMISS, menu.Generation, (int)reason);
     private void WindowEvent(nint hook, uint eventType, nint hwnd, int objectId, int childId, uint thread, uint time)
     {
@@ -202,7 +209,7 @@ public sealed class InputService : IDisposable
         WatchMenu(null);
         WatchPreparation(null);
         NativeMethods.UnregisterHotKey(Handle, 1); NativeMethods.UnregisterHotKey(Handle, 2);
-        if (_mouseThreadId != 0) NativeMethods.PostThreadMessage(_mouseThreadId, NativeMethods.WM_QUIT, 0, 0);
+        if (Volatile.Read(ref _mouseThreadId) is var threadId && threadId != 0) NativeMethods.PostThreadMessage(threadId, NativeMethods.WM_QUIT, 0, 0);
         _mouseThread?.Join(1000);
         _receiver.Dispose();
     }

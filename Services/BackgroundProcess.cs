@@ -32,7 +32,8 @@ internal static class BackgroundProcess
     {
         var info = new StartupInfo { Size = Marshal.SizeOf<StartupInfo>() }; GetStartupInfo(ref info); return info.Flags;
     }
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] private struct StartupInfo
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct StartupInfo
     {
         public int Size; public nint Reserved, Desktop, Title;
         public uint X, Y, Width, Height, CharactersX, CharactersY, Fill, Flags;

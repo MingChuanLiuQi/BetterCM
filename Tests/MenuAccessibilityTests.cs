@@ -7,7 +7,8 @@ namespace BetterCM.Tests;
 
 public sealed class MenuAccessibilityTests
 {
-    [Fact] public async Task MenuPeerReportsRoleNameCheckedAndDisabledState()
+    [Fact]
+    public async Task MenuPeerReportsRoleNameCheckedAndDisabledState()
     {
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>

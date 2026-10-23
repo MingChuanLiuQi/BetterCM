@@ -34,32 +34,53 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<ShellRow> _shell = [];
     private readonly Dictionary<string, ShellRow> _shellEdits = new(StringComparer.Ordinal);
     private string _loadedConfig = "";
+    private AppConfig _loadedSettings = new();
+    private bool _loadedStartup;
     private bool _configurationConflict;
     private bool _validHotkey;
     public MainWindow(App app) { _app = app; InitializeComponent(); SettingsWindowSizing.Attach(this); Title = AppInfo.DisplayName + " · 设置"; ThemeService.Attach(this); BuiltinGrid.ItemsSource = _actions; CustomGrid.ItemsSource = _custom; ShellGrid.ItemsSource = _shell; RefreshSettings(); }
     public void RefreshSettings()
+        => LoadSettings(_app.Config.Clone(), StartupService.Enabled);
+    internal bool HasUnsavedChanges
+        => _configurationConflict || !_validHotkey || (StartWithWindows.IsChecked == true) != _loadedStartup || ConfigJson.Snapshot(ReadSettings()) != _loadedConfig;
+    public void PrepareForShow()
     {
-        var config = _app.Config.Clone();
-        _loadedConfig = ConfigJson.Snapshot(config);
+        if (!HasUnsavedChanges)
+        {
+            RefreshSettings();
+            return;
+        }
+        RefreshShellItems();
+        NotifyConfigurationChanged();
+        if (!_configurationConflict)
+            SaveStatus.Text = "已保留上次未保存的修改，点击“保存设置”生效，或点击“撤销未保存的修改”还原。";
+    }
+    private void LoadSettings(AppConfig config, bool startup)
+    {
+        _loadedSettings = _app.Config.Clone();
+        _loadedConfig = ConfigJson.Snapshot(_loadedSettings);
+        _loadedStartup = StartupService.Enabled;
         _configurationConflict = false;
         ClassicOption.IsChecked = config.ClassicMenu;
         RefreshModeAvailability();
-        ReplaceMenu.IsChecked = config.ReplaceExplorerMenu; StartWithWindows.IsChecked = StartupService.Enabled;
+        ReplaceMenu.IsChecked = config.ReplaceExplorerMenu; StartWithWindows.IsChecked = startup;
         ShellActions.IsChecked = config.IncludeShellActions; FileDetails.IsChecked = config.ShowFileDetails;
         Animations.IsChecked = config.EnableAnimations; Notifications.IsChecked = config.ShowNotifications;
         HotkeyText.Text = config.GlobalHotkey;
-        ThemeChoice.SelectedIndex = config.Theme switch { "dark" => 1, "light" => 2, _ => 0 };
+        SelectChoice(ThemeChoice, config.Theme);
         SelectChoice(MaterialChoice, config.Material); ShowMoreOption.IsChecked = config.ShowMoreItems; CompactOption.IsChecked = config.CompactMenu; MoreDelay.Value = config.MoreHoverDelayMs;
         SubmenuDelay.Value = config.SubmenuHoverDelayMs;
         LoadMotion(config);
         _actions.Clear();
-        foreach (var definition in ActionCatalog.All.OrderBy(x => ActionCatalog.Preference(config, x).Order))
+        foreach (var (definition, pref) in ActionCatalog.Ordered(config))
         {
-            var pref = ActionCatalog.Preference(config, definition);
             _actions.Add(new() { Id = definition.Id, Title = definition.Title + (definition.Toolbar ? " · 顶部工具栏" : ""), Shortcut = definition.Shortcut, Enabled = pref.Enabled, IsPrimary = definition.Toolbar || pref.IsPrimary, CanPin = !definition.Toolbar });
         }
         _custom.Clear(); foreach (var custom in config.CustomActions) _custom.Add(custom);
-        _shellEdits.Clear(); RefreshShellItems();
+        _shellEdits.Clear();
+        foreach (var key in config.PinnedShellActions.Concat(config.HiddenShellActions).Concat(_app.Config.PinnedShellActions).Concat(_app.Config.HiddenShellActions).Distinct(StringComparer.Ordinal))
+            _shellEdits[key] = new() { Key = key, Pinned = config.PinnedShellActions.Contains(key), Hidden = config.HiddenShellActions.Contains(key) };
+        RefreshShellItems();
         RefreshConfigurationSafety();
         RefreshDiagnostics(); SaveStatus.Text = "修改后点击“保存设置”生效。";
     }
@@ -120,8 +141,16 @@ public partial class MainWindow : Window
         catch (Exception ex) { SaveStatus.Text = ex.Message; }
         RefreshDiagnostics();
     }
-    public void NotifyConfigurationChanged()
+    public void NotifyConfigurationChanged(AppConfig? previousInternalConfig = null)
     {
+        if (previousInternalConfig != null && !_configurationConflict && _loadedConfig == ConfigJson.Snapshot(previousInternalConfig))
+        {
+            bool startup = StartWithWindows.IsChecked == true;
+            var pending = SettingsRebase.Merge(_loadedSettings, ReadSettings(), _app.Config);
+            LoadSettings(pending, startup);
+            SaveStatus.Text = "已同步应用内的设置变更，未保存的编辑仍然保留。";
+            return;
+        }
         RefreshDiagnostics();
         _configurationConflict = _loadedConfig != ConfigJson.Snapshot(_app.Config);
         if (_configurationConflict)
@@ -189,7 +218,11 @@ public partial class MainWindow : Window
     private void RefreshCustomSelection()
     {
         if (EditCustomButton == null || RemoveCustomButton == null || CustomCommands == null) return;
-        EditCustomButton.IsEnabled = RemoveCustomButton.IsEnabled = CustomCommands.IsEnabled && CustomGrid.SelectedItem is CustomActionItem;
+        bool selected = CustomCommands.IsEnabled && CustomGrid.SelectedItem is CustomActionItem;
+        int index = selected && CustomGrid.SelectedItem is CustomActionItem item ? _custom.IndexOf(item) : -1;
+        EditCustomButton.IsEnabled = RemoveCustomButton.IsEnabled = selected;
+        if (MoveCustomUpButton != null) MoveCustomUpButton.IsEnabled = selected && index > 0;
+        if (MoveCustomDownButton != null) MoveCustomDownButton.IsEnabled = selected && index >= 0 && index < _custom.Count - 1;
     }
     private void Hotkey_Changed(object sender, TextChangedEventArgs e)
     {
@@ -210,15 +243,23 @@ public partial class MainWindow : Window
     private void MoveUp_Click(object sender, RoutedEventArgs e) => Move(-1);
     private void MoveDown_Click(object sender, RoutedEventArgs e) => Move(1);
     private void Move(int direction) { if (BuiltinGrid.SelectedItem is ActionRow row) { int current = _actions.IndexOf(row), target = current + direction; if (target >= 0 && target < _actions.Count) { _actions.Move(current, target); BuiltinGrid.SelectedItem = row; } } }
-    private void AddCustom_Click(object sender, RoutedEventArgs e) { var dialog = new CustomActionWindow(new()) { Owner = this }; if (dialog.ShowDialog() == true) _custom.Add(dialog.Result); }
-    private void EditCustom_Click(object sender, RoutedEventArgs e) { if (CustomGrid.SelectedItem is CustomActionItem item) { var dialog = new CustomActionWindow(item) { Owner = this }; if (dialog.ShowDialog() == true) _custom[_custom.IndexOf(item)] = dialog.Result; } }
-    private void RemoveCustom_Click(object sender, RoutedEventArgs e) { if (CustomGrid.SelectedItem is CustomActionItem item) _custom.Remove(item); }
+    private void MoveCustomUp_Click(object sender, RoutedEventArgs e) => MoveCustom(-1);
+    private void MoveCustomDown_Click(object sender, RoutedEventArgs e) => MoveCustom(1);
+    private void MoveCustom(int direction) { if (CustomGrid.SelectedItem is CustomActionItem item) { int current = _custom.IndexOf(item), target = current + direction; if (target >= 0 && target < _custom.Count) { _custom.Move(current, target); CustomGrid.SelectedItem = item; RefreshCustomSelection(); } } }
+    private void AddCustom_Click(object sender, RoutedEventArgs e) { var dialog = new CustomActionWindow(new()) { Owner = this }; if (dialog.ShowDialog() == true) { _custom.Add(dialog.Result); RefreshCustomSelection(); } }
+    private void EditCustom_Click(object sender, RoutedEventArgs e) { if (CustomGrid.SelectedItem is CustomActionItem item) { var dialog = new CustomActionWindow(item) { Owner = this }; if (dialog.ShowDialog() == true) { _custom[_custom.IndexOf(item)] = dialog.Result; RefreshCustomSelection(); } } }
+    private void RemoveCustom_Click(object sender, RoutedEventArgs e) { if (CustomGrid.SelectedItem is CustomActionItem item) { _custom.Remove(item); RefreshCustomSelection(); } }
     private void Preview_Click(object sender, RoutedEventArgs e)
     {
         try { _app.PreviewWithOptions(ReadSettings()); SaveStatus.Text = "正在预览当前选项，关闭菜单后恢复已保存的外观"; }
         catch (Exception ex) { SaveStatus.Text = ex.Message; }
     }
-    private void OpenConfig_Click(object sender, RoutedEventArgs e) => Process.Start(new ProcessStartInfo(_app.ConfigPath) { UseShellExecute = true });
+    private void OpenConfig_Click(object sender, RoutedEventArgs e) => OpenLocation(_app.ConfigPath);
+    private void OpenLocation(string path)
+    {
+        try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }
+        catch (Exception ex) { AppLog.Write("settings-open", ex); SaveStatus.Text = "无法打开：" + ex.Message; }
+    }
     private async void ExportDiagnostics_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "ZIP 诊断包 (*.zip)|*.zip", FileName = "BetterCM-diagnostics-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".zip", OverwritePrompt = true };
@@ -235,7 +276,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { AppLog.Write("diagnostics-export", ex); SaveStatus.Text = "导出失败：" + ex.Message; }
     }
-    private void OpenLogs_Click(object sender, RoutedEventArgs e) => Process.Start(new ProcessStartInfo(ConfigStore.DataDirectory) { UseShellExecute = true });
+    private void OpenLogs_Click(object sender, RoutedEventArgs e) => OpenLocation(ConfigStore.DataDirectory);
     private void Hide_Click(object sender, RoutedEventArgs e) => Hide();
     private void Window_Closing(object? sender, CancelEventArgs e) { if (!_app.IsExiting) { e.Cancel = true; Hide(); } }
 }

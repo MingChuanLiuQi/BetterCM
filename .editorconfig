@@ -1,5 +1,14 @@
 root = true
 
+[*.cs]
+indent_style = space
+indent_size = 4
+csharp_preserve_single_line_blocks = true
+csharp_preserve_single_line_statements = true
+dotnet_diagnostic.IDE0049.severity = warning
+dotnet_style_predefined_type_for_locals_parameters_members = true:warning
+dotnet_style_predefined_type_for_member_access = true:warning
+
 [Services/MenuComposer.cs]
 dotnet_diagnostic.CA1307.severity = error
 dotnet_diagnostic.CA1310.severity = error

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using BetterCM.Config;
 namespace BetterCM.Services;
+
 public static class AppLog
 {
     internal const long MaximumBytes = 2 * 1024 * 1024;

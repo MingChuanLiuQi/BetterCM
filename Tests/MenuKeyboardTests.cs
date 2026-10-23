@@ -24,30 +24,35 @@ public class MenuKeyboardTests
     [InlineData("Ctrl+PGDN", Key.PageDown, ModifierKeys.Control, true)]
     public void PrintedNativeShortcutsRespectKeysAndModifiers(string text, Key key, ModifierKeys modifiers, bool expected)
         => Assert.Equal(expected, MenuKeyboard.Matches(text, key, modifiers));
-    [Fact] public void PrintedShortcutWorksWithoutCanonicalVerbAndKeepsNativeIdentity()
+    [Fact]
+    public void PrintedShortcutWorksWithoutCanonicalVerbAndKeepsNativeIdentity()
     {
         var action = new MenuAction { Id = "native:73", Title = "复制", Verb = "" };
         var rows = NativeMenuComposer.Compose([new("扩展", Children: [new("复制", 73, Shortcut: "Ctrl+C")])], [action]);
         Assert.Same(action, MenuKeyboard.NativeAction(rows, Key.C, ModifierKeys.Control));
     }
-    [Fact] public void CanonicalFallbackWorksWhenNativeHandlerOmitsPrintedShortcut()
+    [Fact]
+    public void CanonicalFallbackWorksWhenNativeHandlerOmitsPrintedShortcut()
     {
         var action = new MenuAction { Id = "native:8", Title = "复制", Verb = "copy" };
         Assert.Same(action, MenuKeyboard.NativeAction(NativeMenuComposer.Compose([new("复制", 8)], [action]), Key.C, ModifierKeys.Control));
     }
-    [Fact] public void DisabledNativeShortcutDoesNotExecute()
+    [Fact]
+    public void DisabledNativeShortcutDoesNotExecute()
     {
         var action = new MenuAction { Id = "native:8", Title = "复制", Verb = "copy", Enabled = false };
         Assert.Null(MenuKeyboard.NativeAction(NativeMenuComposer.Compose([new("复制", 8, Enabled: false, Shortcut: "Ctrl+C")], [action]), Key.C, ModifierKeys.Control));
     }
-    [Fact] public void EnterUsesNativeDefaultRatherThanFirstAvailableAction()
+    [Fact]
+    public void EnterUsesNativeDefaultRatherThanFirstAvailableAction()
     {
         MenuEntry first = new() { Action = new() { Id = "first" } }, defaultRow = new() { Action = new() { Id = "default" }, IsDefault = true };
         Assert.Same(defaultRow.Action, MenuKeyboard.EnterAction([first, defaultRow], null, true));
         Assert.Null(MenuKeyboard.EnterAction([first], null, true));
         Assert.Same(first.Action, MenuKeyboard.EnterAction([first, defaultRow], first, true));
     }
-    [Fact] public void EnhancedNativeBindingsKeepClipboardShortcutActions()
+    [Fact]
+    public void EnhancedNativeBindingsKeepClipboardShortcutActions()
     {
         var mapped = ShellCommandMap.Bind(new() { Id = "copy", Shortcut = "Ctrl+C" }, [new() { Id = "shell:31", Verb = "copy" }]);
         Assert.NotNull(mapped); Assert.Equal("copy", mapped.Id); Assert.Equal("Ctrl+C", mapped.Shortcut);

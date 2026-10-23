@@ -348,6 +348,8 @@
                 <StackPanel x:Name="CustomCommands" Grid.Column="1" Orientation="Horizontal">
                   <Button Content="添加动作" Click="AddCustom_Click" BorderBrush="{DynamicResource AccentBrush}" Margin="0,0,8,0" />
                   <Button x:Name="EditCustomButton" Content="编辑" Click="EditCustom_Click" Margin="0,0,8,0" IsEnabled="False" />
+                  <Button x:Name="MoveCustomUpButton" Content="上移" Click="MoveCustomUp_Click" Margin="0,0,8,0" IsEnabled="False" />
+                  <Button x:Name="MoveCustomDownButton" Content="下移" Click="MoveCustomDown_Click" Margin="0,0,8,0" IsEnabled="False" />
                   <Button x:Name="RemoveCustomButton" Content="移除" Click="RemoveCustom_Click" IsEnabled="False" />
                 </StackPanel>
               </Grid>

@@ -1,4 +1,5 @@
 namespace BetterCM.Models;
+
 public sealed class MenuAction
 {
     public string Id { get; init; } = "";

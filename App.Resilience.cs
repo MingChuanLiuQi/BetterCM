@@ -38,7 +38,8 @@ public partial class App
         }
         try { _input?.WatchPreparation(null); _menu?.CloseMenu("界面异常", true); }
         catch (Exception ex) { AppLog.Write("error-dismiss", ex); }
-        ReportError(recoverable ? "操作未完成，请重试。" : "界面遇到异常，已暂停右键接管。请重启 BetterCM；暂时可使用 Windows 右键菜单。");
+        _settings?.RefreshDiagnostics();
+        ReportError(recoverable ? "操作未完成，请重试。" : "界面遇到异常，已暂停右键接管。可从托盘选择恢复，或勾选“使用 BetterCM”后保存设置；暂时可使用 Windows 右键菜单。");
         args.Handled = true;
     }
     private void DomainFailure(object sender, UnhandledExceptionEventArgs args)

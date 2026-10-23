@@ -4,7 +4,6 @@
     <OutputType>WinExe</OutputType>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
-    <Version>1.8.1</Version>
     <AssemblyVersion>$(Version).0</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
     <WindowsPackageType>None</WindowsPackageType>
@@ -13,6 +12,9 @@
     <ApplicationIcon>Assets\BetterCM.ico</ApplicationIcon>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
+  <ItemGroup Condition="'$(BetterCMEnableQA)' != 'true'">
+    <Compile Remove="Services\*Checks.cs;Services\SelfTests.cs;App.Diagnostics.cs" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK.InteractiveExperiences" />
     <EmbeddedResource Include="Assets\BetterCM.ico" />

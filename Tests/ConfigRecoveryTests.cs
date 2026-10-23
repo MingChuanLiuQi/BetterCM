@@ -10,7 +10,8 @@ public sealed class ConfigRecoveryTests : IDisposable
     public ConfigRecoveryTests() => Directory.CreateDirectory(_directory);
     public void Dispose() => Directory.Delete(_directory, true);
 
-    [Fact] public void CorruptInitialLoadCannotBeSavedOverAndOriginalIsPreservedOnce()
+    [Fact]
+    public void CorruptInitialLoadCannotBeSavedOverAndOriginalIsPreservedOnce()
     {
         const string broken = "{\"Theme\":\"dark\",\"CustomActions\":[";
         File.WriteAllText(PathToConfig, broken);
@@ -22,7 +23,8 @@ public sealed class ConfigRecoveryTests : IDisposable
         File.WriteAllText(PathToConfig, "{\"Theme\":\"light\"}");
         Assert.True(store.Load()); Assert.True(store.CanSave); Assert.Equal("light", store.Current.Theme);
     }
-    [Fact] public void NormalSavesKeepLastGoodBackupAndExplicitRecoveryKeepsCorruptCopy()
+    [Fact]
+    public void NormalSavesKeepLastGoodBackupAndExplicitRecoveryKeepsCorruptCopy()
     {
         var store = new ConfigStore(PathToConfig);
         Assert.True(store.Save(new() { Theme = "dark" })); string first = File.ReadAllText(PathToConfig);
@@ -34,20 +36,23 @@ public sealed class ConfigRecoveryTests : IDisposable
         Assert.Equal(first, File.ReadAllText(PathToConfig)); Assert.Equal("broken", File.ReadAllText(invalid));
         Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
     }
-    [Fact] public void UnsupportedSchemaIsPreservedAndCannotBeDowngradedBySavingDefaults()
+    [Fact]
+    public void UnsupportedSchemaIsPreservedAndCannotBeDowngradedBySavingDefaults()
     {
         string future = "{\"SchemaVersion\":9,\"FutureSetting\":\"keep\"}";
         File.WriteAllText(PathToConfig, future); var store = new ConfigStore(PathToConfig);
         Assert.False(store.Load()); Assert.False(store.Save(new())); Assert.Equal(future, File.ReadAllText(PathToConfig));
     }
-    [Fact] public void InvalidBackupCannotReplaceOriginalOrUnlockSaving()
+    [Fact]
+    public void InvalidBackupCannotReplaceOriginalOrUnlockSaving()
     {
         File.WriteAllText(PathToConfig, "original-broken"); File.WriteAllText(PathToConfig + ".bak", "broken-backup");
         var store = new ConfigStore(PathToConfig); Assert.False(store.Load());
         Assert.False(store.RestoreBackup()); Assert.False(store.CanSave);
         Assert.Equal("original-broken", File.ReadAllText(PathToConfig));
     }
-    [Fact] public void ExternalEditBetweenLoadAndSaveIsNotOverwrittenOrLeftAsTemporaryFile()
+    [Fact]
+    public void ExternalEditBetweenLoadAndSaveIsNotOverwrittenOrLeftAsTemporaryFile()
     {
         var store = new ConfigStore(PathToConfig); Assert.True(store.Save(new() { Theme = "dark" }));
         const string external = "{\"Theme\":\"light\"}";

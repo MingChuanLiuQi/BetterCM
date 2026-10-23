@@ -1,5 +1,6 @@
 using System.Windows.Media;
 namespace BetterCM.Services;
+
 public static class IconCache
 {
     private static readonly StaWorker Worker = new("BetterCM icons");

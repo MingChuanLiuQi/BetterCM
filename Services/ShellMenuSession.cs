@@ -100,11 +100,11 @@ public sealed class ShellMenuSession : IDisposable
             }
             if (_context == null)
             {
-            Marshal.ThrowExceptionForHR(SHBindToParent(pidls[0], ref folderId, out var folderPointer, out _));
-            try { _folder = Marshal.GetObjectForIUnknown(folderPointer); } finally { Marshal.Release(folderPointer); }
-            var children = pidls.Select(ILFindLastID).ToArray();
-            Marshal.ThrowExceptionForHR(((IShellFolder)_folder).GetUIObjectOf(owner, (uint)children.Length, children, ref contextId, 0, out var pointer));
-            try { _context = (IContextMenu)Marshal.GetObjectForIUnknown(pointer); } finally { Marshal.Release(pointer); }
+                Marshal.ThrowExceptionForHR(SHBindToParent(pidls[0], ref folderId, out var folderPointer, out _));
+                try { _folder = Marshal.GetObjectForIUnknown(folderPointer); } finally { Marshal.Release(folderPointer); }
+                var children = pidls.Select(ILFindLastID).ToArray();
+                Marshal.ThrowExceptionForHR(((IShellFolder)_folder).GetUIObjectOf(owner, (uint)children.Length, children, ref contextId, 0, out var pointer));
+                try { _context = (IContextMenu)Marshal.GetObjectForIUnknown(pointer); } finally { Marshal.Release(pointer); }
             }
             if (_view != null && background) _site = ShellMenuSite.Attach(_context, _view);
             double bound = watch.Elapsed.TotalMilliseconds;
@@ -134,19 +134,22 @@ public sealed class ShellMenuSession : IDisposable
             }
             Items = items;
             Menu = nodes;
+#if QA
             if (Environment.GetEnvironmentVariable("BETTERCM_PERF") == "1") BuildTimings = new(bound, queried - bound, read - queried, watch.Elapsed.TotalMilliseconds - read);
+#endif
         }
         catch { Dispose(); throw; }
         finally { foreach (var pidl in pidls) Marshal.FreeCoTaskMem(pidl); }
     }
-    private List<ShellMenuNode> ReadMenu(nint menu, string group, bool parentEnabled, List<ShellItem> output, HashSet<nint> visited)
+    private List<ShellMenuNode> ReadMenu(nint menu, string group, bool parentEnabled, List<ShellItem> output, HashSet<nint> visited, HashSet<string>? knownKeys = null)
     {
         var nodes = new List<ShellMenuNode>();
         if (!visited.Add(menu)) return nodes;
-        for (int index = 0, count = GetMenuItemCount(menu); index < count; index++)
+        var keys = knownKeys ?? output.Select(x => x.Key).ToHashSet(StringComparer.Ordinal);
+        var buffer = Marshal.AllocHGlobal(2048);
+        try
         {
-            var buffer = Marshal.AllocHGlobal(2048);
-            try
+            for (int index = 0, count = GetMenuItemCount(menu); index < count; index++)
             {
                 var item = new MENUITEMINFO { cbSize = (uint)Marshal.SizeOf<MENUITEMINFO>(), fMask = NativeMethods.MIIM_STATE | NativeMethods.MIIM_ID | NativeMethods.MIIM_SUBMENU | NativeMethods.MIIM_STRING | NativeMethods.MIIM_FTYPE, dwTypeData = buffer, cch = 1023 };
                 if (!GetMenuItemInfo(menu, (uint)index, true, ref item)) continue;
@@ -174,7 +177,7 @@ public sealed class ShellMenuSession : IDisposable
                     else
                     {
                         InitializeSubmenu(item.hSubMenu, index);
-                        var children = ReadMenu(item.hSubMenu, childGroup, enabled, output, visited);
+                        var children = ReadMenu(item.hSubMenu, childGroup, enabled, output, visited, keys);
                         nodes.Add(new(title, Enabled: enabled, Checked: isChecked, IsDefault: isDefault, Shortcut: shortcut, Children: children, Mnemonic: mnemonic));
                     }
                 }
@@ -189,13 +192,13 @@ public sealed class ShellMenuSession : IDisposable
                     // Include the group: different extensions sometimes share a canonical verb.
                     var key = group + "|" + (verb.Length > 0 ? verb : title);
                     var baseKey = key; int duplicate = 1;
-                    while (output.Any(x => x.Key == key)) key = baseKey + "|#" + ++duplicate;
+                    while (!keys.Add(key)) key = baseKey + "|#" + ++duplicate;
                     output.Add(new(command, title, group, key, verb, enabled, shortcut, isChecked, isDefault));
                     nodes.Add(new(title, command, enabled, Checked: isChecked, IsDefault: isDefault, Shortcut: shortcut, Mnemonic: mnemonic));
                 }
             }
-            finally { Marshal.FreeHGlobal(buffer); }
         }
+        finally { Marshal.FreeHGlobal(buffer); }
         return nodes;
     }
     private void InitializeSubmenu(nint menu, int index)
@@ -269,7 +272,12 @@ public sealed class ShellMenuSession : IDisposable
         }
         finally { if (directory != 0) Marshal.FreeCoTaskMem(directory); if (directoryW != 0) Marshal.FreeCoTaskMem(directoryW); }
         if (Items.Any(x => x.Command == command && x.Verb is "cut" or "copy"))
-            System.Windows.Clipboard.Flush(); // Persist the Shell IDataObject when this isolated host eventually exits.
+        {
+            // The Shell command has already succeeded. Clipboard contention while
+            // persisting its IDataObject must not turn that success into a failure.
+            try { System.Windows.Clipboard.Flush(); }
+            catch (Exception ex) { AppLog.Write("clipboard-flush", ex); }
+        }
     }
     public void Dispose()
     {

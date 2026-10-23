@@ -3,9 +3,8 @@ namespace BetterCM.Models;
 
 public sealed record ActionDefinition(string Id, string Title, string Glyph, string Shortcut, bool Primary, bool Toolbar = false)
 {
-    public bool Supports(SelectedContext ctx) => Id == "code" && Services.ExecutableResolver.VSCode == null ? false : Id == "refresh" ? ctx.ShellBackground && ctx.SourceWindow != 0 : Services.ShellCommandMap.IsNative(Id) ? ctx.HasTarget : ctx.HasFileTarget && (Id switch
+    public bool Supports(SelectedContext ctx) => Id == "code" && Services.ExecutableResolver.VSCode == null ? false : Id == "refresh" ? ctx.ShellBackground && ctx.SourceWindow != 0 : Id is "cut" or "copy" or "delete" ? ctx.HasSelection : Id == "rename" ? ctx.IsSingleItem : Services.ShellCommandMap.IsNative(Id) ? ctx.HasTarget : ctx.HasFileTarget && (Id switch
     {
-        "cut" or "copy" => ctx.HasSelection,
         "content" or "notepad" => ctx.IsText,
         "hash" => ctx.IsSingleItem && !ctx.IsDirectory,
         "wallpaper" => ctx.IsWallpaper,
@@ -39,7 +38,17 @@ public static class ActionCatalog
         new("admin", "以管理员身份运行", "\uEA18", "", true),
         new("reveal", "在资源管理器中定位", "\uE8B7", "", false)
     ];
-    public static ActionPreference Preference(AppConfig config, ActionDefinition action) => config.Actions.FirstOrDefault(x => x.Id == action.Id) ?? new() { Id = action.Id, Enabled = true, IsPrimary = action.Primary, Order = All.ToList().IndexOf(action) };
+    public static readonly IReadOnlyDictionary<string, ActionDefinition> ById = All.ToDictionary(x => x.Id, StringComparer.Ordinal);
+    private static readonly IReadOnlyDictionary<string, int> DefaultOrder = All.Select((action, index) => (action.Id, index)).ToDictionary(x => x.Id, x => x.index, StringComparer.Ordinal);
+    public static ActionPreference Preference(AppConfig config, ActionDefinition action) => config.Actions.FirstOrDefault(x => x.Id == action.Id) ?? DefaultPreference(action);
+    private static ActionPreference DefaultPreference(ActionDefinition action) => new() { Id = action.Id, Enabled = true, IsPrimary = action.Primary, Order = DefaultOrder.GetValueOrDefault(action.Id) };
+    public static IEnumerable<(ActionDefinition Definition, ActionPreference Preference)> Ordered(AppConfig config)
+    {
+        // Preserve the historical first-entry-wins behavior for duplicate preference IDs.
+        var preferences = new Dictionary<string, ActionPreference>(StringComparer.Ordinal);
+        foreach (var preference in config.Actions) preferences.TryAdd(preference.Id, preference);
+        return All.Select(action => (Definition: action, Preference: preferences.GetValueOrDefault(action.Id) ?? DefaultPreference(action))).OrderBy(x => x.Preference.Order);
+    }
     public static bool Matches(CustomActionItem action, SelectedContext ctx)
     {
         if (!action.Enabled || !ctx.HasFileTarget || (ctx.Items.Count > 1 && action.SelectionMode == "single")) return false;
@@ -47,10 +56,12 @@ public static class ActionCatalog
         return extensions.Count == 0 || extensions.Contains("*") || (ctx.HasSelection ? ctx.Items.All(x => extensions.Contains(x.Extension)) : extensions.Contains("dir"));
     }
 }
-public static class PathFormatter
+public static partial class PathFormatter
 {
     public static bool CanConvertToWsl(string path) => path.Length >= 3 && char.IsAsciiLetter(path[0]) && path[1] == ':' && path[2] is '\\' or '/';
     public static string ToWsl(string path) => CanConvertToWsl(path) ? "/mnt/" + char.ToLowerInvariant(path[0]) + "/" + path[3..].Replace('\\', '/') : throw new ArgumentException("此路径无法转换为 WSL 驱动器路径");
     public static string Name(string path) => System.IO.Path.GetFileName(path.TrimEnd('\\', '/')) is { Length: > 0 } name ? name : path;
-    public static string Expand(string token, string path, string directory) => token.Replace("{path}", path).Replace("{dir}", directory).Replace("{name}", Name(path));
+    [System.Text.RegularExpressions.GeneratedRegex(@"\{(path|dir|name)\}")]
+    private static partial System.Text.RegularExpressions.Regex Placeholder();
+    public static string Expand(string token, string path, string directory) => Placeholder().Replace(token, match => match.Groups[1].Value switch { "path" => path, "dir" => directory, _ => Name(path) });
 }

@@ -21,15 +21,34 @@ public static partial class DiagnosticExporter
         // Allowlist: never copy arbitrary strings, exception messages, stack traces, paths or shell titles.
         Add("configuration.json", new
         {
-            config.SchemaVersion, config.Theme, config.Material, config.ClassicMenu, config.ReplaceExplorerMenu,
-            config.EnableAnimations, config.ShowFileDetails, config.IncludeShellActions, config.ShowMoreItems,
-            config.CompactMenu, config.MoreHoverDelayMs, config.SubmenuHoverDelayMs, config.OpenAnimation,
-            config.CloseAnimation, config.OpenAnimationMs, config.CloseAnimationMs, config.AnimationDistance,
-            config.AnimationScalePercent, config.AnimationEasing, config.EnableExpansionAnimations,
-            config.MoreExpansionAnimation, config.GroupExpansionAnimation, config.MoreExpansionMs, config.GroupExpansionMs,
+            config.SchemaVersion,
+            config.Theme,
+            config.Material,
+            config.ClassicMenu,
+            config.ReplaceExplorerMenu,
+            config.EnableAnimations,
+            config.ShowFileDetails,
+            config.IncludeShellActions,
+            config.ShowMoreItems,
+            config.CompactMenu,
+            config.MoreHoverDelayMs,
+            config.SubmenuHoverDelayMs,
+            config.OpenAnimation,
+            config.CloseAnimation,
+            config.OpenAnimationMs,
+            config.CloseAnimationMs,
+            config.AnimationDistance,
+            config.AnimationScalePercent,
+            config.AnimationEasing,
+            config.EnableExpansionAnimations,
+            config.MoreExpansionAnimation,
+            config.GroupExpansionAnimation,
+            config.MoreExpansionMs,
+            config.GroupExpansionMs,
             BuiltinActions = config.Actions.Where(x => Models.ActionCatalog.All.Any(a => a.Id == x.Id)).Select(x => new { x.Id, x.Enabled, x.IsPrimary, x.Order }),
             CustomActions = config.CustomActions.Select((x, i) => new { Index = i, x.Enabled, x.RunAsAdmin, x.IsPrimary, x.UseTargetWorkingDirectory, Mode = x.SelectionMode is "single" or "each" or "batch" ? x.SelectionMode : "invalid", ExtensionCount = x.MatchExtensions.Count }),
-            PinnedShellCount = config.PinnedShellActions.Count, HiddenShellCount = config.HiddenShellActions.Count
+            PinnedShellCount = config.PinnedShellActions.Count,
+            HiddenShellCount = config.HiddenShellActions.Count
         });
         foreach (var name in new[] { "BetterCM.log", "BetterCM.prev.log" })
         {

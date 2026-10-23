@@ -19,9 +19,12 @@ internal static class MenuKeyboard
         var text = parts[^1].ToUpperInvariant();
         Key parsedKey = text switch
         {
-            "ENTER" or "RETURN" => Key.Enter, "DEL" or "DELETE" => Key.Delete,
-            "ESC" or "ESCAPE" => Key.Escape, "INS" => Key.Insert,
-            "PGUP" => Key.PageUp, "PGDN" => Key.PageDown,
+            "ENTER" or "RETURN" => Key.Enter,
+            "DEL" or "DELETE" => Key.Delete,
+            "ESC" or "ESCAPE" => Key.Escape,
+            "INS" => Key.Insert,
+            "PGUP" => Key.PageUp,
+            "PGDN" => Key.PageDown,
             _ when text.Length == 1 && char.IsAsciiDigit(text[0]) => (Key)((int)Key.D0 + text[0] - '0'),
             _ when text.Length > 0 && char.IsAsciiLetter(text[0]) && Enum.TryParse<Key>(text, true, out var value) && Enum.IsDefined(value) => value,
             _ => Key.None
@@ -36,8 +39,13 @@ internal static class MenuKeyboard
         // Some native handlers omit the printed accelerator but provide a canonical verb.
         string? verb = (key, modifiers) switch
         {
-            (Key.C, ModifierKeys.Control) => "copy", (Key.X, ModifierKeys.Control) => "cut", (Key.V, ModifierKeys.Control) => "paste",
-            (Key.F2, ModifierKeys.None) => "rename", (Key.Delete, ModifierKeys.None) => "delete", (Key.Enter, ModifierKeys.Alt) => "properties", _ => null
+            (Key.C, ModifierKeys.Control) => "copy",
+            (Key.X, ModifierKeys.Control) => "cut",
+            (Key.V, ModifierKeys.Control) => "paste",
+            (Key.F2, ModifierKeys.None) => "rename",
+            (Key.Delete, ModifierKeys.None) => "delete",
+            (Key.Enter, ModifierKeys.Alt) => "properties",
+            _ => null
         };
         return verb == null ? null : leaves.FirstOrDefault(x => x.Action!.Group.Length == 0 && x.Action.Verb.Equals(verb, StringComparison.OrdinalIgnoreCase))?.Action;
     }

@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using System.Windows;
+using System.Diagnostics;
 using System.Windows.Media;
 using System.Windows.Threading;
 namespace BetterCM.Services;

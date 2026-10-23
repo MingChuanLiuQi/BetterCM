@@ -17,16 +17,18 @@ public partial class ContextMenuWindow
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         if (key == Key.ImeProcessed && !Search.IsKeyboardFocusWithin) key = e.ImeProcessedKey;
         var modifiers = Keyboard.Modifiers;
+        if (!IsOpen) { e.Handled = true; return; }
+#if QA
         if (Environment.GetEnvironmentVariable("BETTERCM_QA_REPORT") is { Length: > 0 } report)
             try { File.AppendAllText(report + ".keys.jsonl", System.Text.Json.JsonSerializer.Serialize(new { Time = DateTimeOffset.Now, Key = key.ToString(), Original = e.Key.ToString(), Modifiers = modifiers.ToString(), SearchFocus = Search.IsKeyboardFocusWithin }) + "\n"); } catch { }
-        if (!IsOpen) { e.Handled = true; return; }
-        if (key == Key.Escape) { if (_parentMenu != null) ReturnToParent(); else CloseMenu("Escape"); e.Handled = true; return; }
+#endif
+        if (key == Key.Escape) { if (_parentMenu != null) ReturnToParent(); else if (Search.Text.Length > 0) Search.Clear(); else CloseMenu("Escape"); e.Handled = true; return; }
         if (key == Key.Left && modifiers == ModifierKeys.None && _parentMenu != null) { ReturnToParent(); e.Handled = true; return; }
         if (key == Key.F10 && modifiers == ModifierKeys.Shift) { Expand(); e.Handled = true; return; }
         if (key == Key.F && modifiers == ModifierKeys.Control) { FocusSearch(); e.Handled = true; return; }
-        if (Search.IsKeyboardFocusWithin && key == Key.Down && modifiers == ModifierKeys.None)
+        if (Search.IsKeyboardFocusWithin && key is Key.Down or Key.Up && modifiers == ModifierKeys.None)
         {
-            ActionsList.Focus(); ActionsList.SelectedItem = VisibleRows.FirstOrDefault(x => x.Enabled && !x.IsSeparator); e.Handled = true; return;
+            ActionsList.Focus(); ActionsList.SelectedItem = key == Key.Down ? VisibleRows.FirstOrDefault(x => x.Enabled && !x.IsSeparator) : VisibleRows.LastOrDefault(x => x.Enabled && !x.IsSeparator); e.Handled = true; return;
         }
         if (Search.IsKeyboardFocusWithin && !(key == Key.Enter || modifiers == ModifierKeys.Alt)) return;
         var selected = ActionsList.SelectedItem as MenuEntry;
@@ -55,12 +57,19 @@ public partial class ContextMenuWindow
         string? id = (key, modifiers) switch
         {
             (Key.F5, ModifierKeys.None) => "refresh",
-            (Key.C, ModifierKeys.Control) => "copy", (Key.X, ModifierKeys.Control) => "cut",
-            (Key.V, ModifierKeys.Control) => "paste", (Key.F2, ModifierKeys.None) => "rename", (Key.Delete, ModifierKeys.None) => "delete",
+            (Key.C, ModifierKeys.Control) => "copy",
+            (Key.X, ModifierKeys.Control) => "cut",
+            (Key.V, ModifierKeys.Control) => "paste",
+            (Key.F2, ModifierKeys.None) => "rename",
+            (Key.Delete, ModifierKeys.None) => "delete",
             (Key.Enter, ModifierKeys.Alt) => "properties",
-            (Key.T, ModifierKeys.None) => "terminal", (Key.C, ModifierKeys.None) => "code",
-            (Key.N, ModifierKeys.None) => "notepad", (Key.P, ModifierKeys.None) => "path",
-            (Key.U, ModifierKeys.None) => "slash", (Key.H, ModifierKeys.None) => "hash", _ => null
+            (Key.T, ModifierKeys.None) => "terminal",
+            (Key.C, ModifierKeys.None) => "code",
+            (Key.N, ModifierKeys.None) => "notepad",
+            (Key.P, ModifierKeys.None) => "path",
+            (Key.U, ModifierKeys.None) => "slash",
+            (Key.H, ModifierKeys.None) => "hash",
+            _ => null
         };
         var action = RootMenu._nativeMenu != null
             ? MenuKeyboard.NativeAction(RootMenu._nativeState.Rows(), key, modifiers)

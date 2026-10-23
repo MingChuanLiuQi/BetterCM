@@ -5,7 +5,8 @@ namespace BetterCM.Tests;
 
 public sealed class MenuDetailsTests
 {
-    [Fact] public async Task SameTargetSharesPendingReadButCompletedResultsAreNotCached()
+    [Fact]
+    public async Task SameTargetSharesPendingReadButCompletedResultsAreNotCached()
     {
         var probe = new OptionalProbe<string>(); var pending = new TaskCompletionSource<string?>(); int reads = 0;
         var first = probe.ReadAsync(() => { reads++; return pending.Task; }, TimeSpan.FromSeconds(1), identity: "file:A");
@@ -13,14 +14,16 @@ public sealed class MenuDetailsTests
         pending.SetResult("shared"); Assert.Equal("shared", await first); Assert.Equal("shared", await follower); Assert.Equal(1, reads);
         Assert.Equal("fresh", await probe.ReadAsync(() => Task.FromResult<string?>("fresh"), TimeSpan.FromSeconds(1), identity: "file:A"));
     }
-    [Fact] public async Task DifferentTargetsNeverShareMetadata()
+    [Fact]
+    public async Task DifferentTargetsNeverShareMetadata()
     {
         var probe = new OptionalProbe<string>(); var pending = new TaskCompletionSource<string?>(); int reads = 0;
         var first = probe.ReadAsync(() => { reads++; return pending.Task; }, TimeSpan.FromSeconds(1), identity: "file:A");
         var second = probe.ReadAsync(() => { reads++; return Task.FromResult<string?>("B"); }, TimeSpan.FromSeconds(1), identity: "file:B");
         pending.SetResult("A"); Assert.Equal("A", await first); Assert.Equal("B", await second); Assert.Equal(2, reads);
     }
-    [Fact] public async Task CancellingFollowerDoesNotCancelSharedNativeRead()
+    [Fact]
+    public async Task CancellingFollowerDoesNotCancelSharedNativeRead()
     {
         var probe = new OptionalProbe<string>(); var pending = new TaskCompletionSource<string?>();
         var first = probe.ReadAsync(() => pending.Task, TimeSpan.FromSeconds(1), identity: "A");
@@ -29,7 +32,8 @@ public sealed class MenuDetailsTests
         cancellation.Cancel(); await Assert.ThrowsAnyAsync<OperationCanceledException>(() => follower);
         pending.SetResult("correct"); Assert.Equal("correct", await first);
     }
-    [Fact] public async Task SizeIsPublishedWhileIconStillPendingAndSurvivesIconTimeout()
+    [Fact]
+    public async Task SizeIsPublishedWhileIconStillPendingAndSurvivesIconTimeout()
     {
         var icon = new TaskCompletionSource<ImageSource?>(); var first = new TaskCompletionSource<long?>();
         var snapshots = new List<long?>();
@@ -37,19 +41,22 @@ public sealed class MenuDetailsTests
         Assert.Equal(42, await first.Task.WaitAsync(TimeSpan.FromSeconds(1)));
         await loading; Assert.Equal(42, snapshots.Last()); icon.SetResult(null);
     }
-    [Fact] public async Task SlowSizeDoesNotDiscardAvailableIcon()
+    [Fact]
+    public async Task SlowSizeDoesNotDiscardAvailableIcon()
     {
         var image = new DrawingImage(); image.Freeze(); var size = new TaskCompletionSource<long?>(); ImageSource? result = null;
         await MenuDetails.LoadAsync(Task.FromResult<ImageSource?>(image), size.Task, (icon, _) => result = icon, default, TimeSpan.FromMilliseconds(20));
         Assert.Same(image, result); size.SetResult(null);
     }
-    [Fact] public async Task CancellationNeverPublishesLateMetadata()
+    [Fact]
+    public async Task CancellationNeverPublishesLateMetadata()
     {
         using var cancellation = new CancellationTokenSource(); cancellation.Cancel(); int updates = 0;
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => MenuDetails.LoadAsync(Task.FromResult<ImageSource?>(null), Task.FromResult<long?>(7), (_, _) => updates++, cancellation.Token));
         Assert.Equal(0, updates);
     }
-    [Fact] public async Task BlockedProbeDoesNotAccumulateReadsAndRecoversAfterCompletion()
+    [Fact]
+    public async Task BlockedProbeDoesNotAccumulateReadsAndRecoversAfterCompletion()
     {
         var probe = new OptionalProbe<string>(); var pending = new TaskCompletionSource<string?>(); int reads = 0;
         var reading = probe.TryStartNoWait(() => { reads++; return pending.Task; });
@@ -57,7 +64,8 @@ public sealed class MenuDetailsTests
         Assert.Equal(1, reads); pending.SetResult("first"); Assert.Equal("first", await reading);
         Assert.Equal("next", await probe.TryStartNoWait(() => Task.FromResult<string?>("next")));
     }
-    [Fact] public async Task FastConsecutiveReadWaitsForInFlightProbeInsteadOfDroppingResult()
+    [Fact]
+    public async Task FastConsecutiveReadWaitsForInFlightProbeInsteadOfDroppingResult()
     {
         var probe = new OptionalProbe<string>(); var first = new TaskCompletionSource<string?>(); int reads = 0;
         var inflight = probe.ReadAsync(() => { reads++; return first.Task; }, TimeSpan.FromSeconds(1));
@@ -65,7 +73,8 @@ public sealed class MenuDetailsTests
         await Task.Delay(25); first.SetResult("first");
         Assert.Equal("first", await inflight); Assert.Equal("second", await second); Assert.Equal(2, reads);
     }
-    [Fact] public async Task StalledInFlightProbeTimesOutFollowerWithoutStartingSecondRead()
+    [Fact]
+    public async Task StalledInFlightProbeTimesOutFollowerWithoutStartingSecondRead()
     {
         var probe = new OptionalProbe<string>(); var stalled = new TaskCompletionSource<string?>(); int reads = 0;
         var first = probe.ReadAsync(() => { reads++; return stalled.Task; }, TimeSpan.FromMilliseconds(40));

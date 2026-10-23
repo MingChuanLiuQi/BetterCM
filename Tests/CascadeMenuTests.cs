@@ -18,14 +18,16 @@ public class CascadeMenuTests
         Assert.Equal(gap, right.Left - parent.Right); Assert.Equal(gap, parent.Left - left.Right);
         Assert.Equal(250, right.Top + inset); Assert.Equal(250, left.Top + inset);
     }
-    [Fact] public void SubmenuDelayDefaultsRoundTripsAndRejectsInvalidValues()
+    [Fact]
+    public void SubmenuDelayDefaultsRoundTripsAndRejectsInvalidValues()
     {
         var old = System.Text.Json.JsonSerializer.Deserialize<BetterCM.Config.AppConfig>("{}")!;
         Assert.Equal(180, old.SubmenuHoverDelayMs);
         old.SubmenuHoverDelayMs = 320; Assert.Equal(320, old.Clone().SubmenuHoverDelayMs);
         old.SubmenuHoverDelayMs = 0; Assert.Throws<InvalidDataException>(() => BetterCM.Config.ConfigStore.Validate(old));
     }
-    [Fact] public void CascadePreservesEveryCommandWithOnlyOneLevelOnEachSurface()
+    [Fact]
+    public void CascadePreservesEveryCommandWithOnlyOneLevelOnEachSurface()
     {
         List<MenuAction> actions = [new() { Id = "one", ShellKey = "1", Group = "Tool", Title = "One" }, new() { Id = "two", ShellKey = "2", Group = "Tool · Nested", Title = "Two" }, new() { Id = "three", ShellKey = "3", Title = "Root" }];
         var roots = MenuComposer.Compose([], [], actions, new HashSet<string>(), false, "", allItems: true);
@@ -35,7 +37,8 @@ public class CascadeMenuTests
         Assert.Same(actions[1], tool.Children.Single(x => x.IsGroup).Children.Single().Action);
         Assert.All(tool.Children, x => Assert.Equal(0, x.Depth));
     }
-    [Fact] public void SearchAndPinsStillReachNativeCommandsWithoutDuplicatingThem()
+    [Fact]
+    public void SearchAndPinsStillReachNativeCommandsWithoutDuplicatingThem()
     {
         List<MenuAction> actions = [new() { Id = "sha", ShellKey = "sha", Group = "Tool · Hash", Title = "SHA-256" }, new() { Id = "zip", ShellKey = "zip", Group = "Tool", Title = "Zip" }];
         var search = MenuComposer.Compose([], [], actions, new HashSet<string>(), false, "SHA");
@@ -61,7 +64,8 @@ public class CascadeMenuTests
         Assert.True(placement.Right <= parent.Left + 1); Assert.True(placement.Left >= work.Left);
         Assert.True(placement.Bottom <= work.Bottom - 4); Assert.True(placement.Top >= work.Top + 4);
     }
-    [Fact] public void SubmenuObservationKeepsGapsOutsideAndAllWindowsInside()
+    [Fact]
+    public void SubmenuObservationKeepsGapsOutsideAndAllWindowsInside()
     {
         var observation = new MenuObservation(1, new() { Left = 0, Top = 0, Right = 100, Bottom = 300 }, 7, Submenus: [new(2, new() { Left = 100, Top = 100, Right = 200, Bottom = 200 })]);
         Assert.True(observation.ContainsHandle(2)); Assert.True(observation.ContainsPoint(new() { X = 150, Y = 150 }));

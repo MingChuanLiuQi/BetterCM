@@ -18,28 +18,33 @@ public sealed class MenuBackdrop : IDisposable
     private SystemBackdropConfiguration? _configuration;
     private string _material = "";
     public bool IsActive => _mica != null || _acrylic != null;
-    public bool KeepsMaterialWithoutFocus => IsActive && _configuration?.IsInputActive == true;
+    public bool KeepsMaterialWithoutFocus => IsActive && (_configuration?.IsInputActive ?? true);
     internal string Material => _material;
     internal bool HostBackdropEnabled { get; private set; }
+    internal float EffectiveTintOpacity => _acrylic?.TintOpacity ?? _mica?.TintOpacity ?? 1f;
+    internal float EffectiveLuminosityOpacity => _acrylic?.LuminosityOpacity ?? _mica?.LuminosityOpacity ?? 1f;
     public bool Apply(nint handle, string material, bool light)
     {
         // SetTarget does not enable the HWND's host backdrop brush. Every top-level
         // cascade window needs its own flag, including cached windows after a switch.
-        int hostBackdrop = material == "acrylic" ? 1 : 0;
+        // Both "mica" and "acrylic" menu backdrops sample live behind-window content via
+        // HostBackdropBrush so local wallpaper graphics and underlying windows blur through.
+        int hostBackdrop = 1;
         int hostResult = NativeMethods.DwmSetWindowAttribute(handle, NativeMethods.DWMWA_USE_HOSTBACKDROPBRUSH, ref hostBackdrop, sizeof(int));
-        if (material == "acrylic" && hostResult < 0) { Dispose(); return false; }
-        HostBackdropEnabled = hostBackdrop != 0 && hostResult >= 0;
+        if (hostResult < 0) { Dispose(); return false; }
+        HostBackdropEnabled = true;
         if (IsActive && _material == material)
         {
             _configuration!.Theme = light ? SystemBackdropTheme.Light : SystemBackdropTheme.Dark;
             _configuration.IsInputActive = true;
+            ConfigureAppearance(material, light);
             return true;
         }
         Dispose();
-        HostBackdropEnabled = hostBackdrop != 0 && hostResult >= 0;
+        HostBackdropEnabled = true;
         try
         {
-            if (material == "mica" ? !MicaController.IsSupported() : !DesktopAcrylicController.IsSupported()) return false;
+            if (!DesktopAcrylicController.IsSupported() && !MicaController.IsSupported()) return false;
             EnsureQueue();
             _compositor = new Compositor();
             _target = CreateTarget(_compositor, handle);
@@ -47,23 +52,49 @@ public sealed class MenuBackdrop : IDisposable
             _configuration = new() { Theme = light ? SystemBackdropTheme.Light : SystemBackdropTheme.Dark, IsInputActive = true };
             var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(handle);
             bool active;
-            if (material == "mica")
+            if (DesktopAcrylicController.IsSupported())
+            {
+                _acrylic = new();
+                active = _acrylic.SetTarget(id, _target);
+                _acrylic.SetSystemBackdropConfiguration(_configuration);
+                ConfigureAppearance(material, light);
+            }
+            else
             {
                 _mica = new() { Kind = MicaKind.BaseAlt };
                 active = _mica.SetTarget(id, _target);
                 _mica.SetSystemBackdropConfiguration(_configuration);
-            }
-            else
-            {
-                _acrylic = new() { Kind = DesktopAcrylicKind.Thin };
-                active = _acrylic.SetTarget(id, _target);
-                _acrylic.SetSystemBackdropConfiguration(_configuration);
+                ConfigureAppearance(material, light);
             }
             if (!active) { Dispose(); return false; }
             _material = material;
             return true;
         }
         catch (Exception ex) { AppLog.Write("menu-backdrop", ex); Dispose(); return false; }
+    }
+    private void ConfigureAppearance(string material, bool light)
+    {
+        bool mica = material == "mica";
+        var tint = light
+            ? Windows.UI.Color.FromArgb(255, 246, 246, 248)
+            : Windows.UI.Color.FromArgb(255, 24, 24, 28);
+        var fallback = light
+            ? Windows.UI.Color.FromArgb(255, 243, 243, 243)
+            : Windows.UI.Color.FromArgb(255, 32, 32, 32);
+        if (_acrylic != null)
+        {
+            _acrylic.TintColor = tint;
+            _acrylic.TintOpacity = mica ? (light ? 0.42f : 0.36f) : (light ? 0.26f : 0.22f);
+            _acrylic.LuminosityOpacity = mica ? (light ? 0.62f : 0.42f) : (light ? 0.48f : 0.28f);
+            _acrylic.FallbackColor = fallback;
+        }
+        if (_mica != null)
+        {
+            _mica.TintColor = tint;
+            _mica.TintOpacity = light ? 0.45f : 0.38f;
+            _mica.LuminosityOpacity = light ? 0.68f : 0.50f;
+            _mica.FallbackColor = fallback;
+        }
     }
     private static void EnsureQueue()
     {

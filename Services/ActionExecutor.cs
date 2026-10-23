@@ -11,7 +11,8 @@ public sealed class ActionExecutor(ShellBridge shell)
 {
     public async Task<string?> ExecuteAsync(string id, SelectedContext ctx, CancellationToken cancellation = default, IProgress<(double Value, string Text)>? progress = null, ShellResponse? existingShell = null)
     {
-        if (!ActionCatalog.All.First(x => x.Id == id).Supports(ctx)) throw new InvalidOperationException("此动作不适用于当前选区");
+        if (!ActionCatalog.ById.TryGetValue(id, out var definition)) throw new InvalidOperationException("未知动作：" + id);
+        if (!definition.Supports(ctx)) throw new InvalidOperationException("此动作不适用于当前选区");
         if (ShellCommandMap.IsNative(id))
         {
             var menu = existingShell ?? await shell.OpenAsync(ctx, cancellation);
@@ -28,7 +29,10 @@ public sealed class ActionExecutor(ShellBridge shell)
                 var refreshed = await shell.RefreshAsync(ctx);
                 if (!refreshed.Success) throw new InvalidOperationException(refreshed.Error);
                 return null;
-            case "path": case "slash": case "wsl": case "name":
+            case "path":
+            case "slash":
+            case "wsl":
+            case "name":
                 var text = string.Join(Environment.NewLine, ctx.TargetPaths.Select(x => id switch { "slash" => x.Replace('\\', '/'), "wsl" => PathFormatter.ToWsl(x), "name" => PathFormatter.Name(x), _ => x }));
                 await ClipboardRetryAsync(() => Clipboard.SetText(text));
                 return $"已复制 {ctx.TargetPaths.Count()} 个{(id == "name" ? "名称" : "路径")}";
@@ -56,30 +60,28 @@ public sealed class ActionExecutor(ShellBridge shell)
                 if (!NativeMethods.SystemParametersInfo(NativeMethods.SPI_SETDESKWALLPAPER, 0, ctx.PrimaryPath, NativeMethods.SPIF_UPDATEINIFILE | NativeMethods.SPIF_SENDCHANGE)) throw new Win32Exception(Marshal.GetLastWin32Error());
                 return "已设置桌面壁纸";
             case "admin":
-                if (ctx.Extension == ".ps1") Start(ExecutableResolver.WindowsPowerShell, ["-NoProfile", "-File", ctx.PrimaryPath], admin: true);
-                else if (ctx.Extension is ".bat" or ".cmd")
-                {
-                    string command = "& '" + ctx.PrimaryPath.Replace("'", "''") + "'";
-                    Start(ExecutableResolver.WindowsPowerShell, ["-NoProfile", "-EncodedCommand", Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(command))], admin: true);
-                }
-                else if (ctx.Extension == ".msi") Start(ExecutableResolver.SystemProgram("msiexec.exe"), ["/i", ctx.PrimaryPath], admin: true);
-                else Start(ctx.PrimaryPath, admin: true);
+                Process.Start(CreateAdminStartInfo(ctx))?.Dispose();
                 return null;
             default: throw new InvalidOperationException("未知动作：" + id);
         }
     }
-    public Task ExecuteCustomAsync(CustomActionItem action, SelectedContext ctx)
+    public async Task ExecuteCustomAsync(CustomActionItem action, SelectedContext ctx, CancellationToken cancellation = default, IProgress<(double Value, string Text)>? progress = null)
     {
         if (!ActionCatalog.Matches(action, ctx)) throw new InvalidOperationException("自定义动作不适用于当前选区");
         var tokens = ParseArguments(action.Arguments);
-        var targets = action.SelectionMode == "each" ? ctx.TargetPaths : [ctx.PrimaryPath];
+        var targets = (action.SelectionMode == "each" ? ctx.TargetPaths : [ctx.PrimaryPath]).ToArray();
+        int completed = 0;
+        cancellation.ThrowIfCancellationRequested();
+        using var worker = new StaWorker("BetterCM custom actions");
         foreach (var path in targets)
         {
+            cancellation.ThrowIfCancellationRequested();
             var directory = Directory.Exists(path) ? path : Path.GetDirectoryName(path) ?? ctx.CurrentDirectory;
             var args = tokens.SelectMany(token => token == "{paths}" ? ctx.TargetPaths : [PathFormatter.Expand(token, path, directory)]).ToArray();
-            Process.Start(CreateCustomStartInfo(action, args, directory))?.Dispose();
+            // Serialize launches on a worker STA: bounds concurrency and keeps UAC/Shell execution off the UI thread.
+            await worker.Run(() => { cancellation.ThrowIfCancellationRequested(); Process.Start(CreateCustomStartInfo(action, args, directory))?.Dispose(); return true; });
+            progress?.Report(((double)++completed / targets.Length, $"已启动 {completed} / {targets.Length} 个项目"));
         }
-        return Task.CompletedTask;
     }
     public static string[] ParseArguments(string arguments)
     {
@@ -91,6 +93,20 @@ public sealed class ActionExecutor(ShellBridge shell)
     private static void Start(string executable, string[]? arguments = null, string? directory = null, bool admin = false)
     {
         Process.Start(CreateStartInfo(executable, arguments, directory, admin))?.Dispose();
+    }
+    internal static ProcessStartInfo CreateAdminStartInfo(SelectedContext ctx)
+    {
+        var directory = ctx.IsDirectory ? ctx.PrimaryPath : Path.GetDirectoryName(ctx.PrimaryPath) ?? ctx.CurrentDirectory;
+        if (ctx.Extension == ".ps1")
+            return CreateStartInfo(ExecutableResolver.WindowsPowerShell, ["-NoProfile", "-File", ctx.PrimaryPath], directory, admin: true);
+        if (ctx.Extension is ".bat" or ".cmd")
+        {
+            string command = "& '" + ctx.PrimaryPath.Replace("'", "''") + "'";
+            return CreateStartInfo(ExecutableResolver.WindowsPowerShell, ["-NoProfile", "-EncodedCommand", Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(command))], directory, admin: true);
+        }
+        if (ctx.Extension == ".msi")
+            return CreateStartInfo(ExecutableResolver.SystemProgram("msiexec.exe"), ["/i", ctx.PrimaryPath], directory, admin: true);
+        return CreateStartInfo(ctx.PrimaryPath, directory: directory, admin: true);
     }
     internal static ProcessStartInfo CreateCustomStartInfo(CustomActionItem action, string[] arguments, string targetDirectory)
         => CreateStartInfo(action.Executable, arguments, action.UseTargetWorkingDirectory ? targetDirectory : null, action.RunAsAdmin);

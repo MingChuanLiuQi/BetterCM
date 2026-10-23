@@ -29,6 +29,6 @@ jobs:
         run: |
           dotnet restore BetterCM.slnx --locked-mode
           if ($LASTEXITCODE -ne 0) { throw 'Locked restore failed.' }
-          dotnet build BetterCM.slnx -c Release --no-restore --nologo
+          dotnet build BetterCM.csproj -c Release --no-restore --nologo
           if ($LASTEXITCODE -ne 0) { throw 'CodeQL build failed.' }
       - uses: github/codeql-action/analyze@f051dc808ef3645eb0d08647ec751634ec2304ac # v4

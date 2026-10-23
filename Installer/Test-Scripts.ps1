@@ -2,7 +2,9 @@ param([string]$ReportPath = (Join-Path (Split-Path $PSScriptRoot) 'artifacts\qa\
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Signing.ps1')
 . (Join-Path $PSScriptRoot 'ReleaseReports.ps1')
+. (Join-Path $PSScriptRoot 'VerificationReceipt.ps1')
 $fixture = Join-Path (Split-Path $PSScriptRoot) ('artifacts\script-fixture-' + [Guid]::NewGuid().ToString('N'))
+$testStorage = $fixture.Replace('script-fixture-', 'script-storage-')
 New-Item -ItemType Directory -Path $fixture -Force | Out-Null
 $checks = [Collections.Generic.List[object]]::new()
 function Assert-Check([string]$Id, [bool]$Passed) {
@@ -16,6 +18,28 @@ function Assert-Rejected([string]$Id, [scriptblock]$Action) {
 }
 $fixtureSucceeded = $false
 try {
+$receiptPath = New-Item -ItemType Directory -Path (Join-Path $fixture 'verified-payload')
+'one' | Set-Content -LiteralPath (Join-Path $receiptPath.FullName 'one.txt')
+'two' | Set-Content -LiteralPath (Join-Path $receiptPath.FullName 'two.txt')
+$receiptFiles = @(Get-ChildItem -LiteralPath $receiptPath.FullName -File | ForEach-Object { [pscustomobject]@{ Path = $_.Name; SHA256 = (Get-FileHash -LiteralPath $_.FullName).Hash } })
+$receipt = [pscustomobject]@{ SourceClean=$true; SourceCommit='fixture-commit'; Version='1.9.0'; DesktopChecks=$false; Files=$receiptFiles }
+Assert-VerifiedPublish $receiptPath.FullName $receipt '1.9.0' 'fixture-commit' $false
+Assert-Check 'Receipt/AcceptsMatchingInternalPayload' $true
+Assert-Rejected 'Receipt/RejectsWrongCommit' { Assert-VerifiedPublish $receiptPath.FullName $receipt '1.9.0' 'other-commit' $false }
+Assert-Rejected 'Receipt/RejectsWrongVersion' { Assert-VerifiedPublish $receiptPath.FullName $receipt '2.0.0' 'fixture-commit' $false }
+Assert-Rejected 'Receipt/RejectsMissingDesktopEvidence' { Assert-VerifiedPublish $receiptPath.FullName $receipt '1.9.0' 'fixture-commit' $true }
+$receipt.SourceClean = $false
+Assert-Rejected 'Receipt/RejectsDirtySource' { Assert-VerifiedPublish $receiptPath.FullName $receipt '1.9.0' 'fixture-commit' $false }
+$receipt.SourceClean = $true
+$receipt.Files = @($receiptFiles[0], $receiptFiles[0])
+Assert-Rejected 'Receipt/RejectsDuplicatePaths' { Assert-VerifiedPublish $receiptPath.FullName $receipt '1.9.0' 'fixture-commit' $false }
+$receipt.Files = @([pscustomobject]@{ Path='..\outside.txt'; SHA256='unused' }, $receiptFiles[1])
+Assert-Rejected 'Receipt/RejectsEscapingPaths' { Assert-VerifiedPublish $receiptPath.FullName $receipt '1.9.0' 'fixture-commit' $false }
+$receipt.Files = $receiptFiles
+'tampered' | Set-Content -LiteralPath (Join-Path $receiptPath.FullName 'one.txt')
+Assert-Rejected 'Receipt/RejectsModifiedPayload' { Assert-VerifiedPublish $receiptPath.FullName $receipt '1.9.0' 'fixture-commit' $false }
+'extra' | Set-Content -LiteralPath (Join-Path $receiptPath.FullName 'extra.txt')
+Assert-Rejected 'Receipt/RejectsAdditionalFiles' { Assert-VerifiedPublish $receiptPath.FullName $receipt '1.9.0' 'fixture-commit' $false }
 $unsigned = Join-Path $fixture 'unsigned.exe'
 'unsigned fixture' | Set-Content -LiteralPath $unsigned
 Assert-Rejected 'Signing/RejectUnsigned' { Assert-ArtifactSignature $unsigned }
@@ -96,7 +120,9 @@ $families = [ordered]@{
     InstallerBuild = @('installer-build-old', 'installer-0.6.0-old', 'installer-qa-latest')
     QaCompiler = @('qa-compiler-old', 'qa-final-compiler-old', 'qa-layout-compiler-latest')
     QaInstaller = @('qa-installer-old', 'qa-installer-latest')
-    ScriptFixture = @('script-fixture-00000000000000000000000000000001', 'script-fixture-00000000000000000000000000000002')
+    Baseline = @('baseline-old', 'baseline-latest')
+    Maintenance = @('maintenance-old', 'maintenance-latest')
+    ScriptFixture = @('script-fixture-00000000000000000000000000000001', 'script-storage-00000000000000000000000000000002', 'script-fixture-00000000000000000000000000000003', 'script-storage-00000000000000000000000000000004')
 }
 foreach ($names in $families.Values) {
     for ($i = 0; $i -lt $names.Count; $i++) {
@@ -106,10 +132,14 @@ foreach ($names in $families.Values) {
     }
 }
 foreach ($name in @('device-manual', 'qa-important')) { New-Item -ItemType Directory -Path (Join-Path $fixture ('artifacts\' + $name)) | Out-Null }
-& (Join-Path $fixture 'Maintenance.ps1') -KeepRecent 1 -SkipQaArchive *> (Join-Path $fixture 'dry-run.log')
+& (Join-Path $fixture 'Maintenance.ps1') -BackupRoot $testStorage -KeepRecent 1 -SkipQaArchive *> (Join-Path $fixture 'dry-run.log')
 Assert-Check 'Maintenance/DryRunDoesNotCreateBackups' (-not (Test-Path -LiteralPath (Join-Path $fixture 'Backups')))
 Assert-Check 'Maintenance/DryRunPreservesAllDirectories' (Test-Path -LiteralPath (Join-Path $fixture 'artifacts\dev2-old'))
-& (Join-Path $fixture 'Maintenance.ps1') -Apply -KeepRecent 1 -SkipQaArchive *> (Join-Path $fixture 'apply.log')
+Assert-Rejected 'Maintenance/RejectWorkspaceRootAsStorage' { & (Join-Path $fixture 'Maintenance.ps1') -BackupRoot $fixture }
+Assert-Rejected 'Maintenance/RejectTrailingSeparatorWorkspaceRoot' { & (Join-Path $fixture 'Maintenance.ps1') -BackupRoot ($fixture + '\') }
+Assert-Rejected 'Maintenance/RejectNestedWorkspaceStorage' { & (Join-Path $fixture 'Maintenance.ps1') -BackupRoot (Join-Path $fixture 'storage') }
+Assert-Rejected 'Maintenance/RejectNonfiniteCapacity' { & (Join-Path $fixture 'Maintenance.ps1') -MaxArchiveGB ([double]::NaN) }
+& (Join-Path $fixture 'Maintenance.ps1') -BackupRoot $testStorage -Apply -KeepRecent 1 -SkipQaArchive *> (Join-Path $fixture 'apply.log')
 $maintenanceReport = Get-Content -LiteralPath (Join-Path $fixture 'artifacts\maintenance-report.json') -Raw | ConvertFrom-Json
 foreach ($family in $families.GetEnumerator()) {
     $group = $maintenanceReport.Groups | Where-Object Name -EQ $family.Key
@@ -118,14 +148,55 @@ foreach ($family in $families.GetEnumerator()) {
     Assert-Check ('Maintenance/RetainsNewest/' + $family.Key) ((Test-Path -LiteralPath (Join-Path $fixture ('artifacts\' + $names[-1]))) -and -not (Test-Path -LiteralPath (Join-Path $fixture ('artifacts\' + $names[0]))))
 }
 Assert-Check 'Maintenance/UnrelatedDirectoriesPreserved' ((Test-Path -LiteralPath (Join-Path $fixture 'artifacts\device-manual')) -and (Test-Path -LiteralPath (Join-Path $fixture 'artifacts\qa-important')))
-Assert-Check 'Maintenance/EveryRemovalHasVerifiedArchive' (@($maintenanceReport.Results | Where-Object { -not $_.Removed -or -not (Test-Path -LiteralPath (Join-Path $fixture $_.Archive)) }).Count -eq 0)
-$snapshot = Get-ChildItem -LiteralPath (Join-Path $fixture 'Backups') -Filter 'source-*.zip' | Select-Object -First 1
+Assert-Check 'Maintenance/EveryRemovalHasVerifiedArchive' (@($maintenanceReport.Results | Where-Object { -not $_.Removed -or -not (Test-Path -LiteralPath $_.Archive) }).Count -eq 0)
+$snapshot = Get-ChildItem -LiteralPath (Join-Path $testStorage 'snapshots') -Filter 'source-*.zip' | Select-Object -First 1
 $zip = [IO.Compression.ZipFile]::OpenRead($snapshot.FullName)
 try {
     Assert-Check 'Maintenance/UntrackedDotfilesIncluded' (@('.gitattributes', '.gitignore', '.editorconfig' | Where-Object { $_ -notin $zip.Entries.FullName }).Count -eq 0)
     Assert-Check 'Maintenance/TrackedBuildOutputExcluded' ('Tests/bin/generated.cs' -notin $zip.Entries.FullName -and 'source.cs' -in $zip.Entries.FullName)
 } finally { $zip.Dispose() }
 Assert-Check 'Maintenance/ReleasePayloadRetained' (Test-Path -LiteralPath $release.FinalSetupPath)
+$failedStorageArchive = $maintenanceReport.Results | Where-Object Path -EQ 'artifacts\script-storage-00000000000000000000000000000002'
+Assert-Check 'Maintenance/FailedStorageGetsVerifiedArchive' ($failedStorageArchive.Removed -and (Test-Path -LiteralPath $failedStorageArchive.Archive))
+# Retention never touches unknown archives, snapshots, bundles or migrated legacy backups.
+$ownedArchive = Join-Path $testStorage 'archives\dev-extra-20200101-000000-12345678.zip'
+'old generated fixture' | Set-Content -LiteralPath $ownedArchive
+$unknownArchive = Join-Path $testStorage 'archives\user-important.zip'
+'keep me' | Set-Content -LiteralPath $unknownArchive
+& (Join-Path $fixture 'Maintenance.ps1') -BackupRoot $testStorage -PruneArchives -KeepArchiveRecent 0 -SkipQaArchive *> (Join-Path $fixture 'prune-dry.log')
+Assert-Check 'Maintenance/PruningDryRunPreservesArchive' (Test-Path -LiteralPath $ownedArchive)
+& (Join-Path $fixture 'Maintenance.ps1') -BackupRoot $testStorage -Apply -PruneArchives -KeepArchiveRecent 0 -SkipQaArchive *> (Join-Path $fixture 'prune.log')
+Assert-Check 'Maintenance/PrunesOnlyOwnedArchives' (-not (Test-Path -LiteralPath $ownedArchive) -and (Test-Path -LiteralPath $unknownArchive) -and (Test-Path -LiteralPath $snapshot.FullName))
+Assert-Check 'Maintenance/PrunesOldFailedStorageArchive' (-not (Test-Path -LiteralPath $failedStorageArchive.Archive))
+$capacityArchive = Join-Path $testStorage 'archives\dev-capacity-20200101-000000-12345678.zip'
+('x' * 256) | Set-Content -LiteralPath $capacityArchive
+& (Join-Path $fixture 'Maintenance.ps1') -BackupRoot $testStorage -Apply -PruneArchives -KeepArchiveRecent 100 -MaxArchiveGB 0.00000001 -SkipQaArchive *> (Join-Path $fixture 'capacity.log')
+Assert-Check 'Maintenance/CapacityLimitOverridesRecentCount' (-not (Test-Path -LiteralPath $capacityArchive) -and (Test-Path -LiteralPath $unknownArchive))
+# Reproduce deletion of the source and pruning of its sole new archive in the same invocation.
+foreach ($budget in @(@{ Name='zero-count'; Count=0; GB=10 }, @{ Name='over-capacity'; Count=12; GB=0.00000001 })) {
+    $newBuild = New-Item -ItemType Directory -Path (Join-Path $fixture ('artifacts\dev-' + $budget.Name))
+    $payload = Join-Path $newBuild.FullName 'unique-output.txt'
+    ('unique build output ' + $budget.Name) | Set-Content -LiteralPath $payload
+    $payloadHash = (Get-FileHash -LiteralPath $payload).Hash
+    & (Join-Path $fixture 'Maintenance.ps1') -BackupRoot $testStorage -Apply -KeepRecent 0 -PruneArchives -KeepArchiveRecent $budget.Count -MaxArchiveGB $budget.GB -SkipQaArchive *> (Join-Path $fixture ($budget.Name + '.log'))
+    $newReport = Get-Content -LiteralPath (Join-Path $fixture 'artifacts\maintenance-report.json') -Raw | ConvertFrom-Json
+    $archived = $newReport.Results | Where-Object Path -EQ ('artifacts\dev-' + $budget.Name)
+    Assert-Check ('Maintenance/NewArchiveSurvives/' + $budget.Name) ($archived.Removed -and (Test-Path -LiteralPath $archived.Archive) -and $archived.Archive -notin $newReport.PrunedArchives)
+    $zip = [IO.Compression.ZipFile]::OpenRead($archived.Archive)
+    try {
+        $inputStream = $zip.GetEntry('unique-output.txt').Open()
+        try { $restoredHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($inputStream)) } finally { $inputStream.Dispose() }
+        Assert-Check ('Maintenance/NewArchiveRestoresExactPayload/' + $budget.Name) ($restoredHash -eq $payloadHash)
+    } finally { $zip.Dispose() }
+    Assert-Check ('Maintenance/AllNewArchivesProtected/' + $budget.Name) (@($newReport.Results | Where-Object { -not (Test-Path -LiteralPath $_.Archive) }).Count -eq 0)
+}
+$legacy = New-Item -ItemType Directory -Path (Join-Path $fixture 'Backups')
+'legacy backup' | Set-Content -LiteralPath (Join-Path $legacy.FullName 'old.zip')
+$legacyHash = (Get-FileHash -LiteralPath (Join-Path $legacy.FullName 'old.zip')).Hash
+& (Join-Path $fixture 'Maintenance.ps1') -BackupRoot $testStorage -MigrateLegacyStorage -MigrateOnly *> (Join-Path $fixture 'migration-dry.log')
+Assert-Check 'Maintenance/MigrationDryRunPreservesSource' (Test-Path -LiteralPath $legacy.FullName)
+& (Join-Path $fixture 'Maintenance.ps1') -BackupRoot $testStorage -MigrateLegacyStorage -MigrateOnly -Apply *> (Join-Path $fixture 'migration.log')
+Assert-Check 'Maintenance/MigrationPreservesContents' (-not (Test-Path -LiteralPath $legacy.FullName) -and (Get-FileHash -LiteralPath (Join-Path $testStorage 'legacy-backups\old.zip')).Hash -eq $legacyHash)
 New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($ReportPath))) -Force | Out-Null
 [pscustomobject]@{ Passed = $true; SignatureSuccessPath = 'BlockedNoCertificate; callback tests use a fixture stub'; Results = $checks } |
     ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $ReportPath -Encoding utf8
@@ -134,12 +205,15 @@ $fixtureSucceeded = $true
 } finally {
     # Successful fixtures are disposable; retain a failed run for diagnosis.
     if ($fixtureSucceeded) {
-        $resolved = [IO.Path]::GetFullPath($fixture)
+      foreach ($cleanupPath in @($fixture, $testStorage)) {
+        if (-not (Test-Path -LiteralPath $cleanupPath)) { continue }
+        $resolved = [IO.Path]::GetFullPath($cleanupPath)
         $parent = [IO.Path]::GetFullPath((Join-Path (Split-Path $PSScriptRoot) 'artifacts')) + [IO.Path]::DirectorySeparatorChar
-        if (-not $resolved.StartsWith($parent, [StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetFileName($resolved) -notmatch '^script-fixture-[0-9a-f]{32}$') { throw 'Unsafe fixture cleanup path.' }
+        if (-not $resolved.StartsWith($parent, [StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetFileName($resolved) -notmatch '^script-(fixture|storage)-[0-9a-f]{32}$') { throw 'Unsafe fixture cleanup path.' }
         foreach ($directory in @((Get-Item -LiteralPath $resolved -Force)) + @(Get-ChildItem -LiteralPath $resolved -Directory -Recurse -Force)) {
             if ($directory.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing fixture cleanup through a reparse point.' }
         }
         Remove-Item -LiteralPath $resolved -Recurse -Force
+      }
     }
 }

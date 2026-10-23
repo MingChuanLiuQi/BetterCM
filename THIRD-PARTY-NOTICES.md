@@ -31,4 +31,6 @@ The menu system backdrop uses Microsoft Windows App SDK InteractiveExperiences a
 
 ## BetterCM icon provenance
 
-`Assets/BetterCM.ico` 的独立来源和授权尚未有可核对记录。项目源码的 MIT 授权不构成对未知第三方图标权利的声明。维护者应确认原始来源/创作者及授权，或在公开发行前替换为来源明确的图标。
+从 v1.9.0 起，`Assets/BetterCM.ico` 已替换为本仓库原创的几何图标（菜单面板与指针），由 `Assets/Generate-Icon.ps1` 绘制，不使用外部图片、字体或图标库。生成脚本及输出按仓库 MIT 许可证发布，Copyright (c) 2026 BetterCM contributors。脚本可重新生成 16、24、32、48、64、128、256 像素的 32 位图标。
+
+此记录仅适用于 v1.9.0 及以后版本的新图标；历史安装包中的旧图标仍未确认来源。

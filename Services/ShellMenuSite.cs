@@ -70,8 +70,10 @@ public sealed class ShellMenuSite : IMenuServiceProvider, INativeNewMenuClient, 
     }
     private static void Trace(string stage, uint flags)
     {
+#if QA
         if (Environment.GetEnvironmentVariable("BETTERCM_QA_REPORT") is not { Length: > 0 } path) return;
         try { File.AppendAllText(path + ".new.jsonl", System.Text.Json.JsonSerializer.Serialize(new { Time = DateTimeOffset.Now, Stage = stage, Flags = flags, Thread = Environment.CurrentManagedThreadId }) + "\n"); } catch { }
+#endif
     }
     internal async Task DrainCallbacksAsync()
     {

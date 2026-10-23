@@ -6,6 +6,7 @@ using Microsoft.Win32;
 using System.Runtime.CompilerServices;
 using BetterCM.Views;
 namespace BetterCM.Services;
+
 public static class ThemeService
 {
     private static string _material = "mica";
@@ -14,6 +15,8 @@ public static class ThemeService
     public static bool HasStableMenuBackdrop(Window window) => MenuBackdrops.TryGetValue(window, out var backdrop) && backdrop.KeepsMaterialWithoutFocus;
     internal static string MenuMaterial(Window window) => MenuBackdrops.TryGetValue(window, out var backdrop) ? backdrop.Material : "";
     internal static bool MenuHostBackdropEnabled(Window window) => MenuBackdrops.TryGetValue(window, out var backdrop) && backdrop.HostBackdropEnabled;
+    internal static float MenuTintOpacity(Window window) => MenuBackdrops.TryGetValue(window, out var backdrop) ? backdrop.EffectiveTintOpacity : 1f;
+    internal static float MenuLuminosityOpacity(Window window) => MenuBackdrops.TryGetValue(window, out var backdrop) ? backdrop.EffectiveLuminosityOpacity : 1f;
     public static string Diagnostics => $"材质：{_material}；系统材质：{(_useMaterial ? "可用" : "纯色回退")}；Windows build：{Environment.OSVersion.Version.Build}";
     public static void Apply(string mode, string material = "mica")
     {

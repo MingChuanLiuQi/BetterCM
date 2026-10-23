@@ -1,8 +1,8 @@
 param([string]$SetupPath, [switch]$Isolated, [ValidateSet('Release', 'Internal')][string]$ReleaseKind = 'Release')
 $ErrorActionPreference = 'Stop'
+if ($Isolated -and -not $PSBoundParameters.ContainsKey('ReleaseKind')) { $ReleaseKind = 'Internal' }
 $projectRoot = Split-Path $PSScriptRoot
-[xml]$project = Get-Content -LiteralPath (Join-Path $projectRoot 'BetterCM.csproj') -Raw
-$version = [string]$project.Project.PropertyGroup.Version
+$version = & (Join-Path $projectRoot 'Read-Version.ps1')
 . (Join-Path $PSScriptRoot 'ReleaseReports.ps1')
 $releaseContext = Get-InstallerReportContext $projectRoot $version $ReleaseKind
 if ($ReleaseKind -eq 'Release') {
@@ -56,7 +56,9 @@ function Run-Checked([string]$Executable, [string[]]$Arguments, [int]$Timeout = 
 }
 $failure = $null
 try {
-    Run-Checked $SetupPath @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR=' + $installPath),'/TASKS=autostart',('/LOG=' + (Join-Path $qaFolder 'install-smoke.log')))
+    # Production payloads ignore QA startup overrides. Do not replace the user's startup value.
+    $tasks = if ($Isolated) { '/TASKS=autostart' } else { '/TASKS=' }
+    Run-Checked $SetupPath @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR=' + $installPath),$tasks,('/LOG=' + (Join-Path $qaFolder 'install-smoke.log')))
     $installedExe = Join-Path $installPath 'BetterCM.exe'
     if (-not $Isolated -and $payload -and $payload.Signed -and (Get-FileHash -LiteralPath $SetupPath).Hash -eq $payload.InstallerSHA256) {
         . (Join-Path $PSScriptRoot 'Signing.ps1')
@@ -68,6 +70,7 @@ try {
     Check '安装包含 .NET、WPF 与系统材质运行组件' ((Test-Path -LiteralPath (Join-Path $installPath 'coreclr.dll')) -and (Test-Path -LiteralPath (Join-Path $installPath 'PresentationFramework.dll')) -and (Test-Path -LiteralPath (Join-Path $installPath 'dwmcorei.dll')) -and (Test-Path -LiteralPath (Join-Path $installPath 'Microsoft.UI.Composition.OSSupport.dll')) -and (Test-Path -LiteralPath (Join-Path $installPath 'Microsoft.InteractiveExperiences.Projection.dll')))
     Check '运行时和安装语言许可说明已随包安装' ((Test-Path -LiteralPath (Join-Path $installPath 'DotNet-LICENSE.TXT')) -and (Test-Path -LiteralPath (Join-Path $installPath 'WindowsDesktop-LICENSE')) -and (Test-Path -LiteralPath (Join-Path $installPath 'THIRD-PARTY-NOTICES.md')))
     $publishPath = Join-Path $projectRoot 'artifacts\publish\win-x64'
+    if ($Isolated) { $publishPath = Join-Path $projectRoot 'artifacts\diagnostics\win-x64' }
     $payloadMatches = $true
     foreach ($file in @(Get-ChildItem -LiteralPath $publishPath -File -Recurse)) {
         $relative = [System.IO.Path]::GetRelativePath($publishPath, $file.FullName)
@@ -76,9 +79,11 @@ try {
     }
     Check '安装的全部发布文件 SHA256 一致' $payloadMatches
     $startupKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($startupRegistry)
-    Check '启动项为带引号的安装路径及后台参数' ($startupKey.GetValue($startupName) -eq ('"' + $installedExe + '" --background'))
+    if ($Isolated) { Check '启动项为带引号的安装路径及后台参数' ($startupKey.GetValue($startupName) -eq ('"' + $installedExe + '" --background')) }
+    else { Check '正式载荷测试保留原启动项' ($startupKey.GetValue($startupName) -eq $previousStartup) }
     $startupKey.Dispose()
-    $installedReport = Join-Path $qaFolder 'installed-tests.json'
+    $installedReport = Join-Path $qaFolder ('installed-tests-' + [Guid]::NewGuid().ToString('N') + '.json')
+    if ($Isolated) {
     Run-Checked $installedExe @('--self-test', $installedReport) 45000 $true
     $installedResults = Get-Content -LiteralPath $installedReport -Raw | ConvertFrom-Json
     $publishedResults = Get-Content -LiteralPath (Join-Path $qaFolder 'published-tests.json') -Raw | ConvertFrom-Json
@@ -86,6 +91,14 @@ try {
     $installedNames = $installedResults.Results.Id | Sort-Object -CaseSensitive | ConvertTo-Json -Compress
     $expectedNames = $expectedChecks.UiShell | Sort-Object -CaseSensitive | ConvertTo-Json -Compress
     Check ('安装目录可独立运行且完整 ' + $expectedChecks.UiShell.Count + ' 项自检通过') ($installedResults.Passed -and $installedResults.Version -eq $version -and $publishedResults.Passed -and $publishedResults.Version -eq $version -and $installedResults.Build -eq $publishedResults.Build -and $installedNames -ceq $expectedNames -and $installedResults.Results.Count -eq $publishedResults.Results.Count)
+    } else {
+        $probe = [Diagnostics.ProcessStartInfo]::new($installedExe)
+        $probe.UseShellExecute = $false; $probe.CreateNoWindow = $true
+        $probe.ArgumentList.Add('--self-test'); $probe.ArgumentList.Add($installedReport)
+        $rejected = [Diagnostics.Process]::Start($probe)
+        if (-not $rejected.WaitForExit(10000)) { $rejected.Kill(); throw 'Production argument rejection timed out.' }
+        Check '正式载荷拒绝 QA 自检入口' ($rejected.ExitCode -eq 2 -and -not (Test-Path -LiteralPath $installedReport))
+    }
     $backgroundInfo = [System.Diagnostics.ProcessStartInfo]::new($installedExe)
     $backgroundInfo.UseShellExecute = $false
     $backgroundInfo.CreateNoWindow = $true
@@ -111,8 +124,9 @@ finally {
         try { Run-Checked $uninstaller @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG=' + (Join-Path $qaFolder 'uninstall-smoke.log'))) } catch { $failure = ($failure + '; uninstall: ' + $_.Exception.Message) }
     }
     $startupKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($startupRegistry)
-    $results.Add([pscustomobject]@{Name='卸载清除 BetterCM 测试启动项';Passed=($null -eq $startupKey.GetValue($startupName))})
+    if ($Isolated) { $results.Add([pscustomobject]@{Name='卸载清除 BetterCM.QA 测试启动项';Passed=($null -eq $startupKey.GetValue($startupName))}) }
     if ($null -eq $previousStartup) { $startupKey.DeleteValue($startupName, $false) } else { $startupKey.SetValue($startupName, $previousStartup, $previousKind) }
+    if (-not $Isolated) { $results.Add([pscustomobject]@{Name='非隔离测试恢复后保留原启动项及值类型';Passed=($previousStartup -eq $startupKey.GetValue($startupName) -and ($null -eq $previousKind -or $previousKind -eq $startupKey.GetValueKind($startupName)))}) }
     $startupKey.Dispose()
     $realStartupKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($startupRegistry)
     $results.Add([pscustomobject]@{Name='原有 BetterCM 启动项保持不变';Passed=($realStartupBefore -eq $realStartupKey.GetValue('BetterCM'))})

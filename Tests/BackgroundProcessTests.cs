@@ -1,6 +1,7 @@
 using BetterCM.Services;
 using Xunit;
 namespace BetterCM.Tests;
+
 public class BackgroundProcessTests
 {
     [Theory]

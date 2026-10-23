@@ -65,10 +65,29 @@ internal static class NativeUiChecks
             finally { CompositionTarget.Rendering -= Frame; }
             var end = samples.Where(x => x.Time >= window.FirstFrameDelayMs + config.OpenAnimationMs + 25).ToArray();
             NativeMethods.DwmGetWindowAttribute(handle, NativeMethods.DWMWA_CLOAKED, out var cloaked, sizeof(int));
-            check(new CheckIdentity("NativeUi/C037", "动画首帧呈现后解除遮蔽，准备过程有界"), !window.PresentationPending && cloaked == 0 && window.FirstFrameDelayMs < 250, $"ready={window.FirstFrameDelayMs:F2} ms");
+            FirstFrameSample ReadFirstFrame()
+            {
+                int result = NativeMethods.DwmGetWindowAttribute(handle, NativeMethods.DWMWA_CLOAKED, out var cloak, sizeof(int));
+                return new(window.FirstFrameHeld, window.IsOpen && !window.PresentationPending, result >= 0 && cloak == 0, window.FirstFrameDelayMs);
+            }
+            var coldFrame = ReadFirstFrame();
             check(new CheckIdentity("NativeUi/C036", "打开动画结束前后原生尺寸连续且不缩短"), samples.Count >= 2 && samples.All(x => x.Height == initial.Bottom - initial.Top), $"frames={samples.Count}");
             check(new CheckIdentity("NativeUi/C035", "打开动画终点保持透明度和变换不回跳"), end.Length > 0 && end.All(x => Math.Abs(x.Opacity - 1) < .001 && Math.Abs(x.Y) < .001 && Math.Abs(x.Scale - 1) < .001), $"endFrames={end.Length}");
             check(new CheckIdentity("NativeUi/C034", "菜单禁用重复 DWM 窗口过渡以只播放内容动画"), window.NativeTransitionResult >= 0, $"HRESULT=0x{window.NativeTransitionResult:X8}");
+            var stableFrames = new List<FirstFrameSample>();
+            for (int i = 0; i < FirstFrameChecks.StableSampleCount; i++)
+            {
+                window.CloseMenu("首帧稳定状态采样", true);
+                window.ShowAt(26, 42, new(), config, [], [], [], false, commands, nativeMenu: native);
+                var deadline = Stopwatch.StartNew();
+                while (window.PresentationPending && deadline.Elapsed < TimeSpan.FromSeconds(2)) await Task.Delay(10);
+                stableFrames.Add(ReadFirstFrame());
+                await Task.Delay(config.OpenAnimationMs + 30);
+            }
+            var budget = FirstFrameChecks.Evaluate(coldFrame, stableFrames);
+            check(new CheckIdentity("NativeUi/C037", "真实首帧遮蔽及冷启动与稳定状态采样预算"), budget.Passed,
+                System.Text.Json.JsonSerializer.Serialize(new { Cold = coldFrame, Stable = stableFrames, MedianMs = double.IsFinite(budget.MedianMs) ? (double?)budget.MedianMs : null, P95Ms = double.IsFinite(budget.P95Ms) ? (double?)budget.P95Ms : null,
+                    FirstFrameChecks.ColdLimitMs, FirstFrameChecks.MedianLimitMs, FirstFrameChecks.P95LimitMs, AnimationEligible = SurfaceAnimator.OpeningAnimated(config) }));
             window.OpenGroup(window.VisibleRows[2]);
             check(new CheckIdentity("NativeUi/C033", "原生子菜单保持勾选状态并向侧边展开"), window.OpenSubmenu?.VisibleRows.Single().Checked == true && window.ContentCoversWindow, null);
             check(new CheckIdentity("NativeUi/C032", "级联子菜单采用相同的弹出工具窗口类型"), window.OpenSubmenu is { } popup && IsPopupToolWindow(popup), null);
@@ -80,7 +99,7 @@ internal static class NativeUiChecks
             var noAnimation = config.Clone(); noAnimation.EnableAnimations = false;
             window.ShowAt(26, 42, new(), noAnimation, [], [], [], false, commands, nativeMenu: native);
             NativeMethods.DwmGetWindowAttribute(handle, NativeMethods.DWMWA_CLOAKED, out cloaked, sizeof(int));
-            check(new CheckIdentity("NativeUi/C030", "取消遮蔽后无动画重开仍可正常显示"), window.IsOpen && cloaked == 0, null);
+            check(new CheckIdentity("NativeUi/C030", "取消遮蔽后无动画重开仍可正常显示"), window.IsOpen && cloaked == 0 && !window.FirstFrameHeld && window.FirstFrameDelayMs == 0, "未执行 Hold 的无动画呈现不产生计时样本");
             window.CloseMenu("无动画验证结束", true);
             config.CompactMenu = true;
             bool refreshed = false;

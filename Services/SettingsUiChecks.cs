@@ -14,6 +14,20 @@ public static class SettingsUiChecks
         {
             check(new CheckIdentity("SettingsUi/C028", "设置构造完成即初始化经典开关及禁用态，无需手动刷新"), ((CheckBox)window.FindName("ClassicOption")).IsChecked == app.Config.ClassicMenu && ((DataGrid)window.FindName("BuiltinGrid")).IsEnabled == !app.Config.ClassicMenu && ((StackPanel)window.FindName("CustomCommands")).IsEnabled == !app.Config.ClassicMenu, null);
             window.RefreshSettings(); window.Show(); await Task.Delay(20);
+            var theme = (ComboBox)window.FindName("ThemeChoice");
+            var choices = theme.Items.Cast<ComboBoxItem>().ToArray();
+            theme.Items.Clear();
+            foreach (var item in choices.Reverse()) theme.Items.Add(item);
+            string savedTheme = app.Config.Theme;
+            try
+            {
+                foreach (string value in new[] { "system", "dark", "light" })
+                {
+                    app.Config.Theme = value; window.RefreshSettings();
+                    check(new CheckIdentity("SettingsUi/ThemeTag/" + value, "主题选项重排后仍按 Tag 读取 " + value), window.ReadSettings().Theme == value, null);
+                }
+            }
+            finally { app.Config.Theme = savedTheme; window.RefreshSettings(); }
             var classic = (CheckBox)window.FindName("ClassicOption");
             classic.IsChecked = true;
             check(new CheckIdentity("SettingsUi/C027", "经典菜单设置禁用重排隐藏及内置增强选项"), !((DataGrid)window.FindName("BuiltinGrid")).IsEnabled && !((DataGrid)window.FindName("ShellGrid")).IsEnabled && !((CheckBox)window.FindName("ShowMoreOption")).IsEnabled, null);
@@ -77,7 +91,7 @@ public static class SettingsUiChecks
                 save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 check(new CheckIdentity("SettingsUi/C011", "保存事件再次核对当前配置且不落盘"), originalConfig == (File.Exists(app.ConfigPath) ? File.ReadAllText(app.ConfigPath) : null), null);
                 restore.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                check(new CheckIdentity("SettingsUi/C010", "还原最新已保存配置解除冲突并恢复保存"), save.IsEnabled && hotkey.Text == app.Config.GlobalHotkey && ((ComboBox)window.FindName("ThemeChoice")).SelectedIndex == (app.Config.Theme == "dark" ? 1 : app.Config.Theme == "light" ? 2 : 0), null);
+                check(new CheckIdentity("SettingsUi/C010", "还原最新已保存配置解除冲突并恢复保存"), save.IsEnabled && hotkey.Text == app.Config.GlobalHotkey && window.ReadSettings().Theme == app.Config.Theme, null);
                 app.Config.Theme = oldTheme;
                 window.NotifyConfigurationChanged();
                 restore.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

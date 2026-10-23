@@ -5,7 +5,8 @@ namespace BetterCM.Tests;
 
 public class ComServiceReferenceTests
 {
-    [Fact] public async Task StaRegistrationSupportsRpcApartmentQueriesAndRevocation()
+    [Fact]
+    public async Task StaRegistrationSupportsRpcApartmentQueriesAndRevocation()
     {
         using var owner = new StaWorker("COM service owner");
         var provider = new TestProvider();

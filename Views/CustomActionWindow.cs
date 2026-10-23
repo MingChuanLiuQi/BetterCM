@@ -32,7 +32,7 @@ public sealed class CustomActionWindow : Window
             var hint = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, FontSize = 12, LineHeight = 20, Margin = new Thickness(0, 8, 0, 4) };
             hint.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush"); panel.Children.Add(hint);
         }
-        Hint("选择要打开的程序，再告诉它如何接收选中的文件。添加后仍需在设置页保存。" );
+        Hint("选择要打开的程序，再告诉它如何接收选中的文件。添加后仍需在设置页保存。");
         void Field(string title, UIElement control)
         {
             panel.Children.Add(new TextBlock { Text = title, Margin = new Thickness(0, 18, 0, 8) });
@@ -46,14 +46,32 @@ public sealed class CustomActionWindow : Window
         _mode.SelectedIndex = Result.SelectionMode switch { "each" => 1, "batch" => 2, _ => 0 }; _mode.Height = 32;
         _admin.IsChecked = Result.RunAsAdmin; _primary.IsChecked = Result.IsPrimary;
         _targetDirectory.IsChecked = Result.UseTargetWorkingDirectory;
-        Field("菜单中显示的名称", _title); Field("打开程序", _executable);
-        Hint("填写 .exe 或 .com 的完整路径，或 PATH 中的程序名称（保存时固定为完整路径）。VS Code 可填写 Code.exe。" );
+        var executableRow = new Grid();
+        executableRow.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        executableRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        System.Windows.Automation.AutomationProperties.SetName(_executable, "打开程序");
+        var browse = new Button { Name = "BrowseExecutableButton", Content = "浏览…", Margin = new Thickness(10, 0, 0, 0) };
+        browse.Click += (_, _) =>
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "选择要打开的程序",
+                Filter = "可执行程序 (*.exe;*.com)|*.exe;*.com",
+                CheckFileExists = true
+            };
+            if (dialog.ShowDialog(this) == true) ApplySelectedExecutable(dialog.FileName);
+        };
+        Grid.SetColumn(browse, 1);
+        executableRow.Children.Add(_executable);
+        executableRow.Children.Add(browse);
+        Field("菜单中显示的名称", _title); Field("打开程序", executableRow);
+        Hint("填写 .exe 或 .com 的完整路径，或 PATH 中的程序名称（保存时固定为完整路径）。VS Code 可填写 Code.exe。");
         Field("启动参数（可选）", _arguments);
-        Hint("{path} 表示选中项目的路径，{dir} 表示所在文件夹，{name} 表示名称。\n例如：\"{path}\"。路径占位符请保留双引号，避免空格被拆开。" );
+        Hint("{path} 表示选中项目的路径，{dir} 表示所在文件夹，{name} 表示名称。\n例如：\"{path}\"。路径占位符请保留双引号，避免空格被拆开。");
         Field("适用的文件类型", _extensions);
-        Hint("用逗号分隔，例如 .txt, .md。* 表示所有文件，dir 表示文件夹。" );
+        Hint("用逗号分隔，例如 .txt, .md。* 表示所有文件，dir 表示文件夹。");
         Field("选中多个项目时", _mode);
-        Hint("选择“一次处理所有选中项目”时，在参数中用独立的 {paths} 传入全部路径。" );
+        Hint("选择“一次处理所有选中项目”时，在参数中用独立的 {paths} 传入全部路径。");
         panel.Children.Add(_targetDirectory);
         Hint("默认在程序所在目录运行。只有程序确实需要时才勾选此项；目标文件夹中的 DLL 或插件可能被该程序加载。{dir} 参数仍始终表示目标所在目录。");
         panel.Children.Add(_admin); panel.Children.Add(_primary);
@@ -83,4 +101,16 @@ public sealed class CustomActionWindow : Window
         Grid.SetRow(footer, 1); layout.Children.Add(footer);
         Content = layout;
     }
+    internal void ApplySelectedExecutable(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+        _executable.Text = path;
+        if (string.IsNullOrWhiteSpace(_title.Text))
+        {
+            string name = Path.GetFileNameWithoutExtension(path);
+            if (name.Length > 0) _title.Text = "使用 " + name + " 打开";
+        }
+    }
+    internal string TitleText => _title.Text;
+    internal string ExecutableText => _executable.Text;
 }

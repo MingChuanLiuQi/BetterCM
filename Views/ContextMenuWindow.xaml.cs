@@ -1,10 +1,10 @@
+using System.Windows.Media.Animation;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 using BetterCM.Config;
 using BetterCM.Models;
 using BetterCM.Services;
@@ -23,7 +23,8 @@ public partial class ContextMenuWindow : Window
     private readonly MenuFirstFrame _firstFrame = new();
     internal bool PresentationPending => _firstFrame.Pending;
     internal nint ContentHandle => _contentSource?.Handle ?? 0;
-    internal double FirstFrameDelayMs => _firstFrame.ReadyDelayMs;
+    internal double FirstFrameDelayMs => FirstFrameHeld ? _firstFrame.ReadyDelayMs : 0;
+    internal bool FirstFrameHeld { get; private set; }
     private bool _closing;
     private bool _opening, _activationSucceeded;
     private HwndSource? _contentSource;
@@ -56,9 +57,26 @@ public partial class ContextMenuWindow : Window
             if (handle == 0 || _contentSource == null) return new { Created = false };
             NativeMethods.GetWindowRect(handle, out var bounds);
             NativeMethods.GetWindowRect(_contentSource?.Handle ?? 0, out var contentBounds);
-            return new { Height, ActualHeight, MaxHeight, IsExpanding, CancelReason = _expansionCancelReason, Scale = _scale, NativeWidth = bounds.Right - bounds.Left, NativeHeight = bounds.Bottom - bounds.Top, WorkHeight = _work.Bottom - _work.Top,
-                ParentTransform = HwndSource.FromHwnd(handle)?.CompositionTarget?.TransformToDevice.M22, ChildTransform = _contentSource?.CompositionTarget?.TransformToDevice.M22,
-                ContentNativeHeight = contentBounds.Bottom - contentBounds.Top, SurfaceHeight = Surface.Height, SurfaceActual = Surface.ActualHeight, ListHeight = ActionsList.ActualHeight, FooterBottom = SettingsButton.PointToScreen(new Point(0, SettingsButton.ActualHeight)).Y, Bottom = bounds.Bottom };
+            return new
+            {
+                Height,
+                ActualHeight,
+                MaxHeight,
+                IsExpanding,
+                CancelReason = _expansionCancelReason,
+                Scale = _scale,
+                NativeWidth = bounds.Right - bounds.Left,
+                NativeHeight = bounds.Bottom - bounds.Top,
+                WorkHeight = _work.Bottom - _work.Top,
+                ParentTransform = HwndSource.FromHwnd(handle)?.CompositionTarget?.TransformToDevice.M22,
+                ChildTransform = _contentSource?.CompositionTarget?.TransformToDevice.M22,
+                ContentNativeHeight = contentBounds.Bottom - contentBounds.Top,
+                SurfaceHeight = Surface.Height,
+                SurfaceActual = Surface.ActualHeight,
+                ListHeight = ActionsList.ActualHeight,
+                FooterBottom = SettingsButton.PointToScreen(new Point(0, SettingsButton.ActualHeight)).Y,
+                Bottom = bounds.Bottom
+            };
         }
     }
     private NativeMethods.RECT _work;
@@ -79,7 +97,7 @@ public partial class ContextMenuWindow : Window
     public string Diagnostics => $"菜单：{(IsOpen ? "显示" : _closing && IsVisible ? "正在关闭" : "隐藏")}；关闭原因：{_dismissReason}\n窗口：{new WindowInteropHelper(this).Handle}；代次：{_generation}；行数：{ActionsList.Items.Count}；高度：{ActualHeight:F0} DIP\n焦点：{(_activationSucceeded ? "已激活" : "未激活")}；独立材质：{ThemeService.HasStableMenuBackdrop(this)}；扩展样式：{NativeMethods.GetWindowLongPtr(new WindowInteropHelper(this).Handle, NativeMethods.GWL_EXSTYLE).ToInt64():X}\n{ThemeService.Diagnostics}";
     public ContextMenuWindow()
     {
-        InitializeComponent(); ThemeService.Attach(this); _animator = new(Surface);
+        InitializeComponent(); _animator = new(Surface);
         Search.Loaded += (_, _) =>
         {
             if (_searchHint != null || AdornerLayer.GetAdornerLayer(Search) is not { } layer) return;
@@ -112,7 +130,8 @@ public partial class ContextMenuWindow : Window
                 ParentWindow = handle,
                 WindowStyle = NativeMethods.WS_CHILD | NativeMethods.WS_VISIBLE | NativeMethods.WS_CLIPSIBLINGS | NativeMethods.WS_CLIPCHILDREN,
                 UsesPerPixelTransparency = true,
-                Width = 320, Height = 320
+                Width = 320,
+                Height = 320
             });
             _contentSource.CompositionTarget.BackgroundColor = Colors.Transparent;
             _contentSource.RootVisual = Surface;
@@ -124,6 +143,7 @@ public partial class ContextMenuWindow : Window
                 return 0;
             });
         };
+        ThemeService.Attach(this);
         IsVisibleChanged += (_, _) => { if (!IsVisible) { _firstFrame.Cancel(); CancelExpansion(); _moreHover.Cancel(); _animator.Reset(); if (_parentMenu != null && _contentSource != null) _contentSource.RootVisual = null; ObservationChanged?.Invoke(null); } };
         Closed += (_, _) => { _windowClosed = true; _firstFrame.Cancel(); DisposeSubmenus(); CancelExpansion(); _moreHover.Cancel(); _animator.Reset(); _contentSource?.Dispose(); };
         ActionsList.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler((_, e) => { if (e.VerticalChange != 0) CloseSubmenu(); }));
@@ -136,6 +156,7 @@ public partial class ContextMenuWindow : Window
         try
         {
             ObservationChanged?.Invoke(null);
+            FirstFrameHeld = false;
             if (IsVisible) Hide();
             CloseSubmenu();
             CancelExpansion();
@@ -173,6 +194,7 @@ public partial class ContextMenuWindow : Window
             ShowActivated = activate;
             // Prepare the visual state and final HWND/content size before the first visible frame.
             bool held = SurfaceAnimator.OpeningAnimated(config) && _firstFrame.Hold(handle);
+            FirstFrameHeld = held;
             if (held) _animator.PrepareOpening(config); else _animator.Play(config, true);
             ShowActivated = !held && activate;
             Show(); UpdateLayout();
@@ -269,13 +291,10 @@ public partial class ContextMenuWindow : Window
             ShellStatus.Text = error ?? ""; ShellStatus.Visibility = error != null ? Visibility.Visible : Visibility.Collapsed;
             return;
         }
-        if (error == null)
-        {
-            List<MenuAction> Bind(List<MenuAction> entries) => entries.Select(x => ShellCommandMap.Bind(x, actions)).OfType<MenuAction>().ToList();
-            _toolbar = Bind(_toolbar); _primary = Bind(_primary); _more = Bind(_more);
-            Toolbar.ItemsSource = _toolbar;
-            Toolbar.Visibility = _toolbar.Count > 0 && !_config.CompactMenu ? Visibility.Visible : Visibility.Collapsed;
-        }
+        List<MenuAction> Bind(List<MenuAction> entries) => entries.Select(x => ShellCommandMap.Bind(x, error == null ? actions : [])).OfType<MenuAction>().ToList();
+        _toolbar = Bind(_toolbar); _primary = Bind(_primary); _more = Bind(_more);
+        Toolbar.ItemsSource = _toolbar;
+        Toolbar.Visibility = _toolbar.Count > 0 && !_config.CompactMenu ? Visibility.Visible : Visibility.Collapsed;
         var mapped = _primary.Concat(_more).Concat(_toolbar).Where(x => x.ShellKey != null).Select(x => x.ShellKey).ToHashSet();
         _shell = _config.IncludeShellActions ? actions.Where(a => !mapped.Contains(a.ShellKey) && !MenuComposer.DuplicatesBuiltin(a, _primary.Concat(_more).Concat(_toolbar))).ToList() : [];
         ShellStatus.Text = error ?? "";

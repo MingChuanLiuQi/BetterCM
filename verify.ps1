@@ -3,8 +3,7 @@ param([string]$PublishDirectory = 'artifacts\publish\win-x64', [switch]$SkipDesk
     [string]$TimestampServer = 'https://timestamp.digicert.com', [switch]$RequireSignedPublish)
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
-[xml]$project = Get-Content -LiteralPath (Join-Path $projectRoot 'BetterCM.csproj') -Raw
-$version = [string]$project.Project.PropertyGroup.Version
+$version = & (Join-Path $projectRoot 'Read-Version.ps1')
 $publishPath = [IO.Path]::GetFullPath((Join-Path $projectRoot $PublishDirectory))
 $artifactRoot = [IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts')) + [IO.Path]::DirectorySeparatorChar
 if (-not $publishPath.StartsWith($artifactRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Publish output must stay inside project artifacts.' }
@@ -14,6 +13,14 @@ New-Item -ItemType Directory -Path $qaFolder -Force | Out-Null
 
 & dotnet restore (Join-Path $projectRoot 'BetterCM.slnx') --locked-mode --nologo
 if ($LASTEXITCODE -ne 0) { throw 'Locked dependency restore failed.' }
+& dotnet format whitespace (Join-Path $projectRoot 'BetterCM.slnx') --verify-no-changes --no-restore --verbosity quiet
+if ($LASTEXITCODE -ne 0) { throw 'Source formatting check failed.' }
+& dotnet format style (Join-Path $projectRoot 'BetterCM.slnx') --diagnostics IDE0049 --verify-no-changes --no-restore --verbosity quiet
+if ($LASTEXITCODE -ne 0) { throw 'Source style check failed.' }
+foreach ($configuration in @('Release', 'Debug', 'QA')) {
+    & dotnet build (Join-Path $projectRoot 'BetterCM.slnx') -c $configuration --no-restore --nologo -warnaserror
+    if ($LASTEXITCODE -ne 0) { throw ('Solution build failed: ' + $configuration) }
+}
 $auditText = & dotnet list (Join-Path $projectRoot 'BetterCM.slnx') package --vulnerable --include-transitive --format json --no-restore
 if ($LASTEXITCODE -ne 0) { throw 'Dependency audit failed.' }
 $audit = ($auditText -join "`n") | ConvertFrom-Json
@@ -30,11 +37,14 @@ foreach ($auditProject in $audit.projects) {
 }
 & dotnet build (Join-Path $projectRoot 'BetterCM.csproj') -c Release --no-restore --nologo -warnaserror
 if ($LASTEXITCODE -ne 0) { throw 'Build failed; warnings are errors.' }
-& dotnet test (Join-Path $projectRoot 'Tests\BetterCM.Tests.csproj') -c Release --no-restore --nologo -warnaserror --logger 'trx;LogFileName=headless-tests.trx' --results-directory (Join-Path $qaFolder 'headless')
+& dotnet test (Join-Path $projectRoot 'Tests\BetterCM.Tests.csproj') -c QA --no-restore --nologo -warnaserror --blame-hang-timeout 2m --collect 'Code Coverage;Format=Cobertura' --logger 'trx;LogFileName=headless-tests.trx' --results-directory (Join-Path $qaFolder 'headless')
 if ($LASTEXITCODE -ne 0) { throw 'Headless logic tests failed.' }
+& dotnet test (Join-Path $projectRoot 'Tests\BetterCM.Tests.csproj') -c Release --no-restore --nologo -warnaserror --blame-hang-timeout 2m --logger 'trx;LogFileName=headless-release-tests.trx' --results-directory (Join-Path $qaFolder 'headless')
+if ($LASTEXITCODE -ne 0) { throw 'Release-configured test project failed.' }
 if (Test-Path -LiteralPath $publishPath) { Remove-Item -LiteralPath $publishPath -Recurse -Force }
 & dotnet publish (Join-Path $projectRoot 'BetterCM.csproj') -c Release -r win-x64 --self-contained true -o $publishPath --nologo -warnaserror -p:RestoreLockedMode=true
 if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
+& (Join-Path $projectRoot 'Installer\Test-ProductionBinary.ps1') -Path (Join-Path $publishPath 'BetterCM.dll') -ProbeReport (Join-Path $qaFolder 'production-isolation.json')
 if (Get-ChildItem -LiteralPath $publishPath -Recurse -Directory | Where-Object Name -eq 'Tests') { throw 'Publish output contains test directories.' }
 if (Get-ChildItem -LiteralPath $publishPath -Recurse -File | Where-Object Name -match '(^BetterCM\.Tests|^xunit|testhost)') { throw 'Publish output contains test binaries.' }
 . (Join-Path $projectRoot 'Installer\Signing.ps1')
@@ -63,13 +73,31 @@ foreach ($package in $assets.libraries.PSObject.Properties | Where-Object { $_.N
         Copy-Item -LiteralPath $notice.FullName -Destination (Join-Path $publishPath ($prefix + '-' + $notice.Name))
     }
 }
+function Write-VerificationReceipt([bool]$DesktopChecks) {
+    $commit = & git -C $projectRoot rev-parse HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot read verification source commit.' }
+    $dirty = & git -C $projectRoot status --porcelain
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot read verification source status.' }
+    [pscustomobject]@{
+        Version = $version; SourceCommit = $commit; SourceClean = -not [bool]$dirty; DesktopChecks = $DesktopChecks
+        Files = @(Get-ChildItem -LiteralPath $publishPath -Recurse -File | Sort-Object FullName | ForEach-Object {
+            [pscustomobject]@{ Path = [IO.Path]::GetRelativePath($publishPath, $_.FullName); SHA256 = (Get-FileHash -LiteralPath $_.FullName).Hash }
+        })
+    } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $qaFolder 'verified-publish.json') -Encoding utf8
+}
 if ($SkipDesktopChecks) {
+    Write-VerificationReceipt $false
     Write-Output ('Verified BetterCM ' + $version + '; build, headless tests and publish only; desktop checks explicitly skipped.')
     return
 }
+$qaPublishPath = Join-Path $projectRoot 'artifacts\diagnostics\win-x64'
+& dotnet publish (Join-Path $projectRoot 'BetterCM.csproj') -c QA -r win-x64 --self-contained true -o $qaPublishPath --nologo -warnaserror -p:RestoreLockedMode=true
+if ($LASTEXITCODE -ne 0) { throw 'QA publish failed.' }
+Get-ChildItem -LiteralPath $publishPath -File | Where-Object { $_.Name -like 'DotNet-*' -or $_.Name -like 'WindowsDesktop-*' -or $_.Name -like 'Microsoft.WindowsAppSDK.*license*' } |
+    Copy-Item -Destination $qaPublishPath
 $qaReport = Join-Path $qaFolder 'published-tests.json'
 if (Test-Path -LiteralPath $qaReport) { Remove-Item -LiteralPath $qaReport -Force }
-$qaInfo = [Diagnostics.ProcessStartInfo]::new((Join-Path $publishPath 'BetterCM.exe'))
+$qaInfo = [Diagnostics.ProcessStartInfo]::new((Join-Path $qaPublishPath 'BetterCM.exe'))
 $qaInfo.UseShellExecute = $false
 $qaInfo.CreateNoWindow = $true
 $qaInfo.Environment['BETTERCM_DATA_DIR'] = Join-Path $qaFolder 'verify-user-data'
@@ -88,3 +116,4 @@ foreach ($result in $qaResult.Results) {
     if ($displayNames[$result.Id] -cne $result.Name) { Write-Warning ('Check display name changed; update Check-DisplayNames.json: ' + $result.Id) }
 }
 Write-Output ('Verified BetterCM ' + $version + '; UI/Shell checks: ' + $qaResult.Results.Count)
+Write-VerificationReceipt $true

@@ -37,8 +37,13 @@ public static partial class MenuComposer
         var rows = new List<MenuEntry>();
         MenuEntry Leaf(MenuAction a, int depth = 0, bool search = false) => new()
         {
-            Id = a.Id, Title = search && a.Group.Length > 0 ? a.Group + " · " + Caption(a.Title) : Caption(a.Title),
-            Glyph = a.Glyph, Hint = a.Shortcut, Detail = a.Detail, Action = a, Depth = depth,
+            Id = a.Id,
+            Title = search && a.Group.Length > 0 ? a.Group + " · " + Caption(a.Title) : Caption(a.Title),
+            Glyph = a.Glyph,
+            Hint = a.Shortcut,
+            Detail = a.Detail,
+            Action = a,
+            Depth = depth,
             IsPinned = a.ShellKey != null && pins.Contains(a.ShellKey),
             Origin = a.ShellKey == null ? "" : a.Group.Length == 0 ? "Shell" : a.Group.Split(" · ")[0]
         };

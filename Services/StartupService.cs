@@ -1,10 +1,15 @@
 using Microsoft.Win32;
 namespace BetterCM.Services;
+
 public static class StartupService
 {
     internal sealed record Snapshot(object? Value, RegistryValueKind Kind);
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+#if QA
     private static string ValueName => Environment.GetEnvironmentVariable("BETTERCM_STARTUP_NAME") == "BetterCM.QA" && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("BETTERCM_DATA_DIR")) ? "BetterCM.QA" : "BetterCM";
+#else
+    private const string ValueName = "BetterCM";
+#endif
     internal static bool Matches(string? command, string executable)
     {
         if (string.IsNullOrWhiteSpace(command)) return false;

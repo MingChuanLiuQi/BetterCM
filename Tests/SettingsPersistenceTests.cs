@@ -3,9 +3,11 @@ using BetterCM.Services;
 using Microsoft.Win32;
 using Xunit;
 namespace BetterCM.Tests;
+
 public class SettingsPersistenceTests
 {
-    [Fact] public void SnapshotIsStableAcrossClonePersistenceAndSetInsertionOrder()
+    [Fact]
+    public void SnapshotIsStableAcrossClonePersistenceAndSetInsertionOrder()
     {
         var config = new AppConfig { PinnedShellActions = ["z", "a"], HiddenShellActions = ["b", "a"], Material = "acrylic" };
         var equivalent = config.Clone(); equivalent.PinnedShellActions = ["a", "z"]; equivalent.HiddenShellActions = ["a", "b"];
@@ -14,7 +16,8 @@ public class SettingsPersistenceTests
         equivalent.Material = "mica"; Assert.NotEqual(ConfigJson.Snapshot(config), ConfigJson.Snapshot(equivalent));
         Assert.Equal("dark", ConfigJson.Deserialize("{\"theme\":\"dark\"}")!.Theme);
     }
-    [Fact] public void StartupFailureRestoresExactConfigTextAndOriginalStartupValue()
+    [Fact]
+    public void StartupFailureRestoresExactConfigTextAndOriginalStartupValue()
     {
         string root = Path.Combine(Path.GetTempPath(), "BetterCM-settings-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
         try
@@ -28,7 +31,8 @@ public class SettingsPersistenceTests
         }
         finally { Directory.Delete(root, true); }
     }
-    [Fact] public void ConfigSaveFailureDoesNotTouchStartup()
+    [Fact]
+    public void ConfigSaveFailureDoesNotTouchStartup()
     {
         string root = Path.Combine(Path.GetTempPath(), "BetterCM-settings-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
         try
@@ -44,7 +48,8 @@ public class SettingsPersistenceTests
         }
         finally { Directory.Delete(root, true); }
     }
-    [Fact] public void FailedRollbackIsExplicitAndOtherStateStillRestores()
+    [Fact]
+    public void FailedRollbackIsExplicitAndOtherStateStillRestores()
     {
         string root = Path.Combine(Path.GetTempPath(), "BetterCM-settings-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
         try

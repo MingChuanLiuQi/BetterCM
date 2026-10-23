@@ -53,7 +53,15 @@ public sealed class AppConfig
     public List<CustomActionItem> CustomActions { get; set; } = [];
     public HashSet<string> PinnedShellActions { get; set; } = [];
     public HashSet<string> HiddenShellActions { get; set; } = [];
-    public AppConfig Clone() => ConfigJson.Deserialize(ConfigJson.Serialize(this))!;
+    public AppConfig Clone()
+    {
+        var copy = (AppConfig)MemberwiseClone();
+        copy.Actions = Actions.Select(x => new ActionPreference { Id = x.Id, Enabled = x.Enabled, IsPrimary = x.IsPrimary, Order = x.Order }).ToList();
+        copy.CustomActions = CustomActions.Select(x => new CustomActionItem { Id = x.Id, Title = x.Title, Executable = x.Executable, Arguments = x.Arguments, RunAsAdmin = x.RunAsAdmin, UseTargetWorkingDirectory = x.UseTargetWorkingDirectory, Enabled = x.Enabled, IsPrimary = x.IsPrimary, SelectionMode = x.SelectionMode, MatchExtensions = [.. x.MatchExtensions] }).ToList();
+        copy.PinnedShellActions = new(PinnedShellActions, PinnedShellActions.Comparer);
+        copy.HiddenShellActions = new(HiddenShellActions, HiddenShellActions.Comparer);
+        return copy;
+    }
 }
 public sealed class ConfigStore
 {
@@ -67,6 +75,15 @@ public sealed class ConfigStore
     private string? _invalidHash;
     private bool _hasDiskSnapshot;
     private string? _diskText;
+    internal bool HasDiskChanges
+    {
+        get
+        {
+            if (!CanSave || !_hasDiskSnapshot) return true;
+            try { return (File.Exists(FilePath) ? File.ReadAllText(FilePath) : null) != _diskText || Directory.Exists(FilePath); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return true; }
+        }
+    }
     public ConfigStore(string? filePath = null) => FilePath = filePath ?? Path.Combine(DataDirectory, "config.json");
     public bool Load()
     {
@@ -203,8 +220,11 @@ public sealed class ConfigStore
         if (config.MoreExpansionMs is < 60 or > 400 || config.GroupExpansionMs is < 60 or > 400) throw new InvalidDataException("展开动画时长应为 60–400 毫秒");
         if (config.Actions is null || config.CustomActions is null || config.PinnedShellActions is null || config.HiddenShellActions is null) throw new InvalidDataException("配置列表不能为 null");
         if (config.Actions.Any(x => x is null) || config.CustomActions.Any(x => x is null)) throw new InvalidDataException("动作列表不能包含 null");
+        var customIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var action in config.CustomActions)
         {
+            if (string.IsNullOrWhiteSpace(action.Id) || !customIds.Add(action.Id)) throw new InvalidDataException("自定义动作 ID 不能为空或重复");
+            if (BetterCM.Models.ActionCatalog.ById.ContainsKey(action.Id) || action.Id.StartsWith("shell:", StringComparison.Ordinal) || action.Id.StartsWith("native:", StringComparison.Ordinal)) throw new InvalidDataException("自定义动作 ID 不能与内置或系统动作冲突");
             if (action is null || string.IsNullOrWhiteSpace(action.Title) || string.IsNullOrWhiteSpace(action.Executable)) throw new InvalidDataException("自定义动作需要名称和程序路径");
             if (action.Enabled && (!Path.IsPathFullyQualified(action.Executable) || !BetterCM.Services.ExecutableResolver.IsProgram(action.Executable))) throw new InvalidDataException("自定义动作需要 .exe 或 .com 的完整路径，请重新编辑该动作。");
             if (action.Arguments is null || action.MatchExtensions is null || action.MatchExtensions.Any(x => x is null)) throw new InvalidDataException("动作参数和扩展名列表不能为 null");

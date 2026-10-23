@@ -50,7 +50,8 @@ public sealed class SurfaceAnimator
         {
             "cubic" => new CubicEase { EasingMode = opening ? EasingMode.EaseOut : EasingMode.EaseIn },
             "quintic" => new QuinticEase { EasingMode = opening ? EasingMode.EaseOut : EasingMode.EaseIn },
-            "sine" => new SineEase { EasingMode = EasingMode.EaseInOut }, _ => null
+            "sine" => new SineEase { EasingMode = EasingMode.EaseInOut },
+            _ => null
         };
         void Add(string property, double from, double to)
         {

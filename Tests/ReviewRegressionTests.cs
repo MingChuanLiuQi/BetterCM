@@ -25,7 +25,8 @@ public sealed class ReviewRegressionTests : IDisposable
         Assert.Equal(target, Assert.Single(info.ArgumentList));
         Assert.Equal(useTarget, new AppConfig { CustomActions = [action] }.Clone().CustomActions[0].UseTargetWorkingDirectory);
     }
-    [Fact] public void ExistingSchemaTwoDefaultsToProgramDirectory()
+    [Fact]
+    public void ExistingSchemaTwoDefaultsToProgramDirectory()
     {
         string path = Path.Combine(_root, "config.json");
         File.WriteAllText(path, "{\"SchemaVersion\":2,\"CustomActions\":[{\"Title\":\"old\",\"Executable\":\"C:\\\\Tools\\\\tool.exe\"}]}");
@@ -39,17 +40,22 @@ public sealed class ReviewRegressionTests : IDisposable
     [InlineData("NOTEPAD.EXE")]
     public void BundledLegacyDefaultsAreRemovedBeforeExecutableResolution(string command)
     {
-        string json = JsonSerializer.Serialize(new { SchemaVersion = 1, CustomActions = new[] {
+        string json = JsonSerializer.Serialize(new
+        {
+            SchemaVersion = 1,
+            CustomActions = new[] {
             new { Title = "old default", Executable = command, Arguments = "\"{path}\"" },
             new { Title = "keep customized parameters", Executable = command, Arguments = "--custom \"{path}\"" }
-        } });
+        }
+        });
         using var migrated = JsonDocument.Parse(ConfigMigrations.Migrate(json, removeLegacyDefaults: true));
         var action = Assert.Single(migrated.RootElement.GetProperty("CustomActions").EnumerateArray());
         Assert.Equal("keep customized parameters", action.GetProperty("Title").GetString());
         using var userConfig = JsonDocument.Parse(ConfigMigrations.Migrate(json));
         Assert.Equal(2, userConfig.RootElement.GetProperty("CustomActions").GetArrayLength());
     }
-    [Fact] public void RestoreBackupPersistsCurrentSchemaAndPreservesOriginalBackup()
+    [Fact]
+    public void RestoreBackupPersistsCurrentSchemaAndPreservesOriginalBackup()
     {
         string path = Path.Combine(_root, "config.json");
         const string legacy = "{\"SchemaVersion\":1,\"Theme\":\"dark\",\"CustomActions\":[]}";

@@ -11,9 +11,16 @@ public static class ShellCommandMap
         var command = native.FirstOrDefault(x => x.Group.Length == 0 && x.Verb.Equals(presentation.Id, StringComparison.OrdinalIgnoreCase));
         return command == null ? null : new()
         {
-            Id = presentation.Id, Title = command.Title, Glyph = presentation.Glyph, Shortcut = presentation.Shortcut,
-            Enabled = command.Enabled, ShellKey = command.ShellKey, Verb = command.Verb, Group = command.Group,
-            Detail = command.Detail, Execute = command.Execute
+            Id = presentation.Id,
+            Title = command.Title,
+            Glyph = presentation.Glyph,
+            Shortcut = presentation.Shortcut,
+            Enabled = command.Enabled,
+            ShellKey = command.ShellKey,
+            Verb = command.Verb,
+            Group = command.Group,
+            Detail = command.Detail,
+            Execute = command.Execute
         };
     }
 }

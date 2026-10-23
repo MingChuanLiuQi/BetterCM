@@ -95,6 +95,7 @@ public sealed class ShellBridge : IDisposable
     }
     internal int? InvokingProcessId { get { lock (_sync) return _invocations.FirstOrDefault()?.ProcessId; } }
     internal int? CurrentProcessId { get { lock (_sync) return _current?.ProcessId; } }
+#if QA
     internal async Task<ShellResponse> TestLoggingAsync(int count, string scope)
     {
         using var connection = NewConnection();
@@ -107,6 +108,7 @@ public sealed class ShellBridge : IDisposable
         if (!response.Success || !uint.TryParse(response.Error, out var flags)) throw new IOException("无法读取辅助进程启动标志");
         return flags;
     }
+#endif
     internal Task PrepareNextAsync() { lock (_sync) return _spare?.WarmAsync() ?? Task.CompletedTask; }
     public void Dispose()
     {
@@ -144,9 +146,14 @@ public sealed class ShellBridge : IDisposable
             var name = "BetterCM.Shell." + Guid.NewGuid().ToString("N");
             lock (_operationSync)
             {
-            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-            _pipe = new(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-            _process = BackgroundProcess.Start(Environment.ProcessPath!, testHost ? "--shell-test-host" : "--shell-host", name);
+                ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+                _pipe = new(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+                string hostMode = "--shell-host";
+                _ = testHost;
+#if QA
+            if (testHost) hostMode = "--shell-test-host";
+#endif
+                _process = BackgroundProcess.Start(Environment.ProcessPath!, hostMode, name);
             }
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token); deadline.CancelAfter(6000);
             await _pipe.WaitForConnectionAsync(deadline.Token);
@@ -200,12 +207,12 @@ public sealed class ShellBridge : IDisposable
         {
             lock (_operationSync)
             {
-            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-            _lifetime.Cancel();
-            _pipe?.Dispose(); // Closing the pipe releases a pending read without racing StreamReader.Dispose.
-            if (!InvocationReserved && !_invokeSent && _process is { HasExited: false }) { try { _process.Kill(); } catch { } }
-            _process?.Dispose();
-            if (!Busy) CloseResources();
+                if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+                _lifetime.Cancel();
+                _pipe?.Dispose(); // Closing the pipe releases a pending read without racing StreamReader.Dispose.
+                if (!InvocationReserved && !_invokeSent && _process is { HasExited: false }) { try { _process.Kill(); } catch { } }
+                _process?.Dispose();
+                if (!Busy) CloseResources();
             }
         }
         private void CloseResources()
@@ -223,7 +230,9 @@ public static class ShellHost
         using var lifetime = test ? null : new ShellHostLifetime();
         bool invoked = false;
         ShellMenuSession? session = null;
+#if QA
         string? testSession = null;
+#endif
         using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
         try
         {
@@ -237,6 +246,7 @@ public static class ShellHost
                 {
                     try
                     {
+#if QA
                         if (test)
                         {
                             if (request.Kind == "startup-flags") return new ShellResponse(true, Error: BackgroundProcess.StartupFlags().ToString());
@@ -250,6 +260,7 @@ public static class ShellHost
                             if (request.Kind == "invoke" && request.Session == testSession) { Thread.Sleep(request.Command * 1000); return new ShellResponse(true); }
                         }
                         else
+#endif
                         {
                             if (request.Kind == "refresh")
                             {

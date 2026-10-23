@@ -32,7 +32,8 @@ internal sealed class ShellHostLifetime : IDisposable
                 AppLog.Write("shell-retained-work", new TimeoutException("原生窗口或扩展引用保留宿主超过 15 秒；等待原生任务结束，不终止任务。"));
                 reported = true;
             }
-            await Task.Delay(150);
+            // Long-lived native dialogs do not require six full desktop enumerations per second.
+            await Task.Delay(reported ? 1000 : 150);
         }
     }
     private static bool HasVisibleWindows()

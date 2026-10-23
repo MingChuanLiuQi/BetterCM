@@ -31,10 +31,15 @@ public partial class ContextMenuWindow
     internal IReadOnlyList<MenuEntry> VisibleRows => ActionsList.Items.Cast<MenuEntry>().ToList();
     public object? CascadeLayout => _submenu == null ? null : new
     {
-        Group = _submenuId, Width = _submenu.Width, Height = _submenu.Height,
-        Rows = _submenu.VisibleRows.Count, OpensLeft = _submenu._opensLeft,
-        Material = ThemeService.MenuMaterial(_submenu), HostBackdrop = ThemeService.MenuHostBackdropEnabled(_submenu),
-        Regions = SubmenuRegions().Select(x => new { Handle = (long)x.Handle, x.Bounds.Left, x.Bounds.Top, x.Bounds.Right, x.Bounds.Bottom }).ToArray(), Layout = _submenu.LayoutDiagnostics,
+        Group = _submenuId,
+        Width = _submenu.Width,
+        Height = _submenu.Height,
+        Rows = _submenu.VisibleRows.Count,
+        OpensLeft = _submenu._opensLeft,
+        Material = ThemeService.MenuMaterial(_submenu),
+        HostBackdrop = ThemeService.MenuHostBackdropEnabled(_submenu),
+        Regions = SubmenuRegions().Select(x => new { Handle = (long)x.Handle, x.Bounds.Left, x.Bounds.Top, x.Bounds.Right, x.Bounds.Bottom }).ToArray(),
+        Layout = _submenu.LayoutDiagnostics,
         Child = _submenu.CascadeLayout
     };
 
@@ -182,6 +187,7 @@ public partial class ContextMenuWindow
         animation.EnableAnimations = ExpansionAnimator.Enabled(config, config.GroupExpansionAnimation);
         animation.OpenAnimation = config.GroupExpansionAnimation; animation.OpenAnimationMs = config.GroupExpansionMs;
         bool held = SurfaceAnimator.OpeningAnimated(animation) && _firstFrame.Hold(handle);
+        FirstFrameHeld = held;
         if (held) _animator.PrepareOpening(animation, _opensLeft ? -1 : 1);
         else _animator.Play(animation, true, horizontalDirection: _opensLeft ? -1 : 1);
         Show(); UpdateLayout(); _opening = false; _shownAt = RootMenu._shownAt;

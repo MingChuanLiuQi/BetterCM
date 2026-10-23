@@ -5,12 +5,17 @@ namespace BetterCM.Tests;
 
 public sealed class AppInstanceTests
 {
-    [Theory] [InlineData("--shell-host")] [InlineData("--context-host")]
-    [InlineData("--shell-test-host")] [InlineData("--context-test-host")]
+    [Theory]
+    [InlineData("--shell-host")]
+    [InlineData("--context-host")]
+    [InlineData("--shell-test-host")]
+    [InlineData("--context-test-host")]
     public void HelpersAreIdentifiedEvenWhenArgumentsAreMalformed(string argument) => Assert.True(AppInstance.IsHelper([argument]));
-    [Fact] public async Task MissingInstanceStopsWithoutWaitingOrTouchingOtherInstances()
+    [Fact]
+    public async Task MissingInstanceStopsWithoutWaitingOrTouchingOtherInstances()
         => Assert.True(await AppInstance.StopAsync("BetterCM.Test." + Guid.NewGuid().ToString("N"), TimeSpan.FromSeconds(1)));
-    [Fact] public async Task StopWaitsForActualInstanceCleanupAndReturnsFailureIfStillPresent()
+    [Fact]
+    public async Task StopWaitsForActualInstanceCleanupAndReturnsFailureIfStillPresent()
     {
         string name = "BetterCM.Test." + Guid.NewGuid().ToString("N");
         using var instance = new Mutex(false, @"Local\" + name + ".App");

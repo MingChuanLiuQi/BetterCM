@@ -27,11 +27,20 @@ public static class NativeMenuComposer
                     action = new() { Id = action.Id, Title = action.Title, Glyph = action.Glyph, Shortcut = action.Shortcut, Detail = action.Detail, Enabled = enabled, ShellKey = action.ShellKey, Group = action.Group, Verb = action.Verb, Execute = action.Execute };
                 rows.Add(new()
                 {
-                    Id = id, Title = needle.Length == 0 ? node.Title : fullTitle, Action = action, IsGroup = children != null, Children = children ?? [],
+                    Id = id,
+                    Title = needle.Length == 0 ? node.Title : fullTitle,
+                    Action = action,
+                    IsGroup = children != null,
+                    Children = children ?? [],
                     DeferredSubmenu = node.DeferredSubmenu,
-                    GroupEnabled = enabled, Checked = node.Checked, IsDefault = node.IsDefault, IsNativeLayout = true,
-                    Glyph = node.Checked ? "\uE73E" : children != null ? "\uE8B7" : action?.Glyph ?? "\uE8A7", Hint = node.Shortcut.Length > 0 ? node.Shortcut : action?.Shortcut ?? "",
-                    Detail = action?.Detail.Length > 0 ? action.Detail : fullTitle, Mnemonic = node.Mnemonic
+                    GroupEnabled = enabled && (children == null || children.Count > 0 || node.DeferredSubmenu != null),
+                    Checked = node.Checked,
+                    IsDefault = node.IsDefault,
+                    IsNativeLayout = true,
+                    Glyph = node.Checked ? "\uE73E" : children != null ? "\uE8B7" : action?.Glyph ?? "\uE8A7",
+                    Hint = node.Shortcut.Length > 0 ? node.Shortcut : action?.Shortcut ?? "",
+                    Detail = action?.Detail.Length > 0 ? action.Detail : fullTitle,
+                    Mnemonic = node.Mnemonic
                 });
             }
             return rows;

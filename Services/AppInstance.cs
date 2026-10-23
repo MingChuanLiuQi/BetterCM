@@ -4,7 +4,14 @@ namespace BetterCM.Services;
 
 internal static class AppInstance
 {
-    internal static bool IsHelper(IReadOnlyList<string> args) => args.Count > 0 && args[0] is "--shell-host" or "--shell-test-host" or "--context-host" or "--context-test-host";
+    internal const string InstallationMutex = @"Local\BetterCM.Installation.InUse";
+    internal static string Name(string? directory) => string.IsNullOrEmpty(directory) ? "BetterCM"
+        : "BetterCM." + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory)).ToUpperInvariant())))[..16];
+    internal static bool IsHelper(IReadOnlyList<string> args) => args.Count > 0 && (args[0] is "--shell-host" or "--context-host"
+#if QA
+        or "--shell-test-host" or "--context-test-host"
+#endif
+    );
     // The running GUI owns this mutex until its OnExit cleanup is complete.
     // Missing events during early startup are retried, without killing processes.
     internal static async Task<bool> StopAsync(string name, TimeSpan timeout)
