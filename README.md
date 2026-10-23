@@ -57,7 +57,7 @@ dotnet test .\Tests\BetterCM.Tests.csproj -c QA
 
 这些命令是操作示例；实际执行范围以本版 QA 记录为准。自检使用临时文件夹进行真实原生复制、移动及视图刷新，不清空用户回收站。输入检查仍需人工操作。
 
-CI 将验证和安装器编译放在同一 Windows 作业，安装阶段使用 `-ReuseVerifiedPublish`。复用前重新核对干净提交、源码树 SHA256、版本、检查范围、完整文件集合及每个 SHA256；不能把跳过桌面检查的证据当作桌面通过。远端 CI 尚未在本轮执行。
+CI 将验证和安装器编译放在同一 Windows 作业，安装阶段使用 `-ReuseVerifiedPublish`。复用前重新核对干净提交、源码树 SHA256、版本、检查范围、完整文件集合及每个 SHA256；不能把跳过桌面检查的证据当作桌面通过。远端 Verify 与 CodeQL 的实际状态以对应提交的 GitHub Actions 记录为准。
 
 `Build-Installer.ps1` 保留干净提交门禁。完整门禁产物进入 `artifacts/releases/<version>`；跳过桌面检查的安装包进入 `artifacts/internal/<version>`。两者均附便携包、`release-manifest.json` 和 `evidence/`。`Build-Candidate.ps1` 在独立快照仓库内调用同一门禁，再把结果放入候选目录；程序标识快照提交，清单同时记录原工作区提交、是否干净及逐文件相同的源码树哈希，不能冒充主仓库已提交或公开发布。
 

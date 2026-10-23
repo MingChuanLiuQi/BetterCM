@@ -4,6 +4,8 @@
 
 GitHub 发行从主仓库干净提交重新运行 verify 与 Build-Installer，确保 v1.9.1 标签、程序 Build 与发布回执对应同一主仓库提交。该次实际结果随 Release 的验证证据 ZIP 发布，仓库本地保存在 `artifacts/releases/1.9.1/evidence/`；独立快照候选的报告不替代主仓库发行验证。
 
+发行前远端检查发现并修正干净检出格式差异、预装新版 Inno Setup 与固定版本安装冲突，以及一项把合法 250 ms 超时当成缺失程序错误文案的时序测试。C# 换行明确为 LF，CI 复用满足 6.5+ 的编译器；呈现测试使用可控结果，异步预算和网络隔离仍由专项测试覆盖，并追加超时禁用回归。主仓库发行测试总数为 QA/Release 各 325 项；远端 Verify/CodeQL 以对应提交的 Actions 为准。
+
 开发阶段报告在 `artifacts/iteration-1.9.1/`。最终独立快照完整验证、安装包及可恢复源码位于按次生成的 `artifacts/candidates/1.9.1-<UTC时间>-<标识>/`。完整候选必须具有 `candidate-manifest.json`；读取其中 SnapshotCommit、SourceTreeSHA256、OriginCommit、OriginSourceClean 和文件哈希来核对，不能仅凭版本号认定与当前 HEAD 一致。
 
 ```powershell

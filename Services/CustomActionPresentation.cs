@@ -5,10 +5,13 @@ namespace BetterCM.Services;
 public static class CustomActionPresentation
 {
     private static readonly ProgramAvailability Availability = new();
-    public static async Task<MenuAction> CreateAsync(CustomActionItem action, Func<Task> execute, CancellationToken cancellation = default)
+    public static Task<MenuAction> CreateAsync(CustomActionItem action, Func<Task> execute, CancellationToken cancellation = default)
+        => CreateAsync(action, execute, Availability.CheckAsync, cancellation);
+    internal static async Task<MenuAction> CreateAsync(CustomActionItem action, Func<Task> execute,
+        Func<string, CancellationToken, Task<bool?>> checkAvailability, CancellationToken cancellation = default)
     {
         bool? available = action.Enabled && Path.IsPathFullyQualified(action.Executable) && ExecutableResolver.IsProgram(action.Executable)
-            ? await Availability.CheckAsync(action.Executable, cancellation) : false;
+            ? await checkAvailability(action.Executable, cancellation) : false;
         return new()
         {
             Id = action.Id,
