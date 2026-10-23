@@ -33,11 +33,20 @@ jobs:
         with:
           name: verification-reports
           path: artifacts/qa
-      - name: Install Inno Setup
+      - name: Ensure Inno Setup 6.5+
         shell: pwsh
         run: |
-          choco install innosetup --version=6.5.4 --yes --no-progress
+          $compiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (Test-Path -LiteralPath $compiler) {
+            $installed = [Diagnostics.FileVersionInfo]::GetVersionInfo($compiler)
+            if ($installed.FileMajorPart -gt 6 -or ($installed.FileMajorPart -eq 6 -and $installed.FileMinorPart -ge 5)) {
+              Write-Output ('Using installed Inno Setup ' + $installed.FileVersion)
+              exit 0
+            }
+          }
+          choco install innosetup --version=6.5.4 --allow-downgrade --yes --no-progress
           if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+          if (-not (Test-Path -LiteralPath $compiler)) { throw 'Inno Setup compiler was not installed at the expected path.' }
       - name: Compile internal unsigned installer
         shell: pwsh
         run: ./Build-Installer.ps1 -SkipDesktopChecks -ReuseVerifiedPublish
