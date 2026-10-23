@@ -90,6 +90,8 @@ public partial class MainWindow : Window
         var ctx = _app.LastContext;
         DiagnosticsText.Text = ctx == null ? "还没有右键记录。请先在文件、文件夹或桌面上打开一次 BetterCM。\n\n配置文件：" + _app.ConfigPath : $"最近一次右键：{ctx.CapturedAt:HH:mm:ss}\n识别来源：{ctx.Source}\n选中项目：{ctx.Items.Count} 个\n所在位置：{ctx.CurrentDirectory}\n目标路径：{string.Join("\n", ctx.TargetPaths)}\n\n{_app.Timing}\n配置文件：{_app.ConfigPath}";
         DiagnosticsText.Text += "\n\n" + _app.MenuDiagnostics;
+        if (_app.RecentMenuRequests.LastOrDefault() is { } request)
+            DiagnosticsText.Text += $"\n\n最近输入请求 #{request.RequestId}（{request.Input}）：{request.Outcome}\n累计耗时：排队 {request.QueueMs:F1} / 上下文 {request.ContextReadyMs:F1} / Shell {request.ShellReadyMs:F1} / 动作 {request.ActionsReadyMs:F1} / 显示 {request.WindowShownMs:F1} / 呈现观测 {request.PresentationObservedMs:F1} ms\n键盘焦点：{(request.KeyboardReady ? "已就绪" : "未确认")}（呈现观测不含动画完成）";
     }
     private static void SelectChoice(ComboBox choice, string value) => choice.SelectedItem = choice.Items.Cast<ComboBoxItem>().First(x => x.Tag.ToString() == value);
     private static string Choice(ComboBox choice) => ((ComboBoxItem)choice.SelectedItem).Tag.ToString()!;
@@ -270,7 +272,8 @@ public partial class MainWindow : Window
             double dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this).PixelsPerInchX;
             // Export atomically, preserving an existing destination until the archive is complete.
             string temporary = dialog.FileName + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            try { await Task.Run(() => DiagnosticExporter.Export(temporary, snapshot, dpi)); File.Move(temporary, dialog.FileName, true); }
+            var requests = _app.RecentMenuRequests;
+            try { await Task.Run(() => DiagnosticExporter.Export(temporary, snapshot, dpi, menuRequests: requests)); File.Move(temporary, dialog.FileName, true); }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
             SaveStatus.Text = "诊断包已导出（路径、文件名及自定义内容已省略，日志仅含摘要），分享前请先检查。";
         }

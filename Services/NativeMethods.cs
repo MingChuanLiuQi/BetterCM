@@ -4,6 +4,7 @@ namespace BetterCM.Services;
 
 public static class NativeMethods
 {
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetDriveTypeW")] internal static extern uint GetDriveType(string rootPath);
     public const int WH_MOUSE_LL = 14, GA_ROOT = 2, GWL_STYLE = -16;
     public const int WM_SETFOCUS = 0x0007;
     public const int DWMWA_CLOAK = 13, DWMWA_CLOAKED = 14;

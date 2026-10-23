@@ -32,6 +32,9 @@ public partial class App : Application, IMenuHost
     private CancellationTokenSource? _captureCancellation, _shellCancellation;
     private int _triggerGeneration;
     private int _menuRequest;
+    private readonly MenuRequestHistory _requestHistory = new();
+    private MenuRequestTiming? _activeRequestTiming;
+    public MenuRequestSample[] RecentMenuRequests => _requestHistory.Snapshot();
     private AppearancePreview? _appearance;
     private CancellationTokenSource? _detailsCancellation;
 #if QA
@@ -133,6 +136,7 @@ public partial class App : Application, IMenuHost
     public void ShowSettings()
     {
         if (IsExiting) return;
+        _captureCancellation?.Cancel(); _triggerGeneration++;
         bool created = _settings == null;
         if (created) { _settings = new(this); MainWindow = _settings; }
         _menuRequest++; _shellCancellation?.Cancel();
@@ -150,6 +154,7 @@ public partial class App : Application, IMenuHost
     public void PreviewWithOptions(AppConfig options)
     {
         if (_menu == null) return;
+        _captureCancellation?.Cancel(); _triggerGeneration++;
         ConfigStore.Validate(options);
         var context = LastContext ?? new SelectedContext { Source = "菜单预览 · 桌面文件夹", CurrentDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop) };
         NativeMethods.GetCursorPos(out var point); _ = PreviewMenuAsync(point.X, point.Y, context, options);
@@ -162,6 +167,7 @@ public partial class App : Application, IMenuHost
     }
     public void CancelPreview()
     {
+        _captureCancellation?.Cancel(); _triggerGeneration++;
         _menuRequest++; _shellCancellation?.Cancel();
         _input?.WatchPreparation(null);
         _menu?.CloseMenu("还原已保存设置", true);
@@ -170,11 +176,13 @@ public partial class App : Application, IMenuHost
     private async Task TriggerAsync(TriggerRequest request)
     {
         if (IsExiting) return;
+        FinishRequestTiming(_activeRequestTiming, "Superseded");
+        var timing = _activeRequestTiming = new MenuRequestTiming(request);
         _captureCancellation?.Cancel();
         var cancellation = _captureCancellation = new CancellationTokenSource();
         int trigger = ++_triggerGeneration;
         _menuRequest++; _shellCancellation?.Cancel();
-        _input?.WatchPreparation(null);
+        _input?.WatchPreparation(new(request.Window, default, -_menuRequest, (uint)Environment.TickCount));
         _menu?.CloseMenu("新的右键请求", true);
         _appearance?.Restore();
         var timer = Stopwatch.StartNew();
@@ -182,19 +190,36 @@ public partial class App : Application, IMenuHost
         {
             var clipboard = ExplorerContextService.UsesExplorerContext(NativeMethods.ClassName(request.Window)) ? [] : ReadClipboardPaths();
             var context = await _contexts.CaptureAsync(request.Window, clipboard, request.PointerActivation ? new NativeMethods.POINT { X = request.X, Y = request.Y } : null, cancellation.Token, request.NavigationActivation);
+            timing.ContextReady();
             if (trigger != _triggerGeneration || cancellation.IsCancellationRequested || IsExiting) return;
             LastContext = context; Timing = $"上下文准备：{timer.Elapsed.TotalMilliseconds:F0} ms";
-            await ShowMenuAsync(request.X, request.Y, context); if (_settings?.IsVisible == true) _settings.RefreshDiagnostics();
+            await ShowMenuAsync(request.X, request.Y, context, timing: timing); if (_settings?.IsVisible == true) _settings.RefreshDiagnostics();
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception ex)
         {
+            FinishRequestTiming(timing, "Failed");
             if (trigger != _triggerGeneration || IsExiting) return;
             AppLog.Write("trigger", ex);
             try { await ShowMenuAsync(request.X, request.Y, new() { SourceWindow = request.Window, Source = "上下文识别失败，请用 Shift+右键" }); }
             catch (Exception fallback) { AppLog.Write("trigger-fallback", fallback); ReportError("菜单暂时无法显示，请按住 Shift 再右键使用 Windows 菜单。"); }
         }
-        finally { if (_captureCancellation == cancellation) _captureCancellation = null; cancellation.Dispose(); }
+        finally
+        {
+            if (!timing.Finished && timing.Sample.WindowShownMs == null) FinishRequestTiming(timing, "Cancelled");
+            if (trigger == _triggerGeneration && timing.Sample.WindowShownMs == null) _input?.WatchPreparation(null);
+            if (_captureCancellation == cancellation) _captureCancellation = null;
+            cancellation.Dispose();
+        }
+    }
+    private void FinishRequestTiming(MenuRequestTiming? timing, string? outcome = null)
+    {
+        if (timing == null || timing.Finished && !ReferenceEquals(_activeRequestTiming, timing)) return;
+        if (outcome != null) timing.Finish(outcome);
+        if (!timing.Finished) return;
+        _requestHistory.Add(timing.Sample);
+        if (ReferenceEquals(_activeRequestTiming, timing)) _activeRequestTiming = null;
+        if (_settings?.IsVisible == true) _settings.RefreshDiagnostics();
     }
     private static IReadOnlyList<string> ReadClipboardPaths()
     {
@@ -206,7 +231,7 @@ public partial class App : Application, IMenuHost
         catch (Exception ex) { AppLog.Write("clipboard-read", ex); }
         return [];
     }
-    private async Task ShowMenuAsync(int x, int y, SelectedContext context, AppConfig? options = null)
+    private async Task ShowMenuAsync(int x, int y, SelectedContext context, AppConfig? options = null, MenuRequestTiming? timing = null)
     {
         if (_menu == null) return;
         var config = (options ?? Config).Clone();
@@ -251,6 +276,7 @@ public partial class App : Application, IMenuHost
                 try { shellLoad = _shell.OpenAsync(context, cancellation, deferSubmenus: config.ClassicMenu); response = await shellLoad; }
                 finally { if (request == _menuRequest) _input?.WatchPreparation(null); }
             }
+            timing?.ShellReady();
             if (cancellation.IsCancellationRequested || request != _menuRequest || IsExiting) return;
             bool nativeLayout = config.ClassicMenu && response?.Success == true;
             if (config.ClassicMenu && !nativeLayout)
@@ -273,6 +299,7 @@ public partial class App : Application, IMenuHost
                 shellActions = CreateShellActions(response, config);
                 Timing += $"；系统项目准备：{timer.Elapsed.TotalMilliseconds:F0} ms";
             }
+            timing?.ActionsReady();
             int generation = _menu.ShowAt(new MenuPresentationRequest
             {
                 X = x,
@@ -286,6 +313,8 @@ public partial class App : Application, IMenuHost
                 Shell = shellActions,
                 ShellError = response?.Success == false ? response.Error + "\n已回退到增强菜单，可使用内置路径及自定义动作；Shift+右键可打开 Windows 菜单。" : !context.HasTarget ? context.Source : null,
                 NativeMenu = nativeLayout ? response?.Menu ?? [] : null,
+                WindowShown = timing == null ? null : timing.WindowShown,
+                PresentationObserved = timing == null ? null : (rendered, keyboardReady) => { timing.Complete(rendered, keyboardReady); FinishRequestTiming(timing); },
                 NativeRefresh =
                 config.ClassicMenu && context.ShellBackground && context.SourceWindow != 0 ? () => RunAsync(async (_, _) => { var refreshed = await _shell.RefreshAsync(context); if (!refreshed.Success) throw new InvalidOperationException(refreshed.Error); return null; }) : null,
                 NativeLoad = config.ClassicMenu && response?.Session is { } session ? async submenu =>
@@ -392,11 +421,17 @@ public partial class App : Application, IMenuHost
         {
             if (generation < 0)
             {
-                if (generation == -_menuRequest) { _menuRequest++; _shellCancellation?.Cancel(); _input?.WatchPreparation(null); _appearance?.Restore(); }
+                CancelMenuPreparation(generation);
             }
             else _menu?.Dismiss(generation, reason);
         };
         return input;
+    }
+    internal void CancelMenuPreparation(int generation)
+    {
+        if (generation != -_menuRequest) return;
+        _menuRequest++; _triggerGeneration++; _captureCancellation?.Cancel(); _shellCancellation?.Cancel();
+        _input?.WatchPreparation(null); _appearance?.Restore();
     }
     private void ApplyInput() { _input?.Apply(Config.GlobalHotkey, Config.ReplaceExplorerMenu && !_interceptionPaused); ReportInputStatus(); _settings?.RefreshDiagnostics(); }
     internal void ApplySavedInput()
@@ -438,6 +473,7 @@ public partial class App : Application, IMenuHost
     public void ExitApplication() { if (IsExiting) return; IsExiting = true; Shutdown(); }
     protected override void OnExit(ExitEventArgs e)
     {
+        FinishRequestTiming(_activeRequestTiming, "Exiting");
         IsExiting = true; _captureCancellation?.Cancel(); _shellCancellation?.Cancel(); _watcher?.Dispose(); _input?.Dispose(); _shell.Dispose(); _contexts.Dispose();
         SystemEvents.UserPreferenceChanged -= WindowsPreferenceChanged;
         DispatcherUnhandledException -= DispatcherFailure; TaskScheduler.UnobservedTaskException -= UnobservedFailure;

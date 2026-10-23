@@ -9,9 +9,12 @@ $sourceCommit = & git -C $projectRoot rev-parse HEAD
 if ($LASTEXITCODE -ne 0 -or (& git -C $projectRoot status --porcelain)) { throw 'Installer requires a committed, clean source tree.' }
 if ($RequireSigning -and -not $CertificateThumbprint) { throw 'Public signed releases require a code-signing certificate.' }
 . (Join-Path $projectRoot 'Installer\Signing.ps1')
+. (Join-Path $projectRoot 'Installer\SourceIdentity.ps1')
+$sourceIdentity = Get-SourceIdentity $projectRoot
 if ($ReuseVerifiedPublish) {
     . (Join-Path $projectRoot 'Installer\VerificationReceipt.ps1')
     $receipt = Get-Content -LiteralPath (Join-Path $projectRoot 'artifacts\qa\verified-publish.json') -Raw | ConvertFrom-Json
+    Assert-SourceIdentity $receipt $sourceIdentity
     $verifiedPath = Join-Path $projectRoot 'artifacts\publish\win-x64'
     Assert-VerifiedPublish $verifiedPath $receipt $version $sourceCommit (-not [bool]$SkipDesktopChecks)
     & (Join-Path $projectRoot 'Installer\Test-ProductionBinary.ps1') -Path (Join-Path $verifiedPath 'BetterCM.dll')
@@ -22,6 +25,7 @@ if ($ReuseVerifiedPublish) {
     & (Join-Path $projectRoot 'verify.ps1') -SkipDesktopChecks:$SkipDesktopChecks -CertificateThumbprint $CertificateThumbprint -SignToolPath $SignToolPath -TimestampServer $TimestampServer -RequireSignedPublish:$RequireSigning
 }
 if ((& git -C $projectRoot rev-parse HEAD) -ne $sourceCommit -or (& git -C $projectRoot status --porcelain)) { throw 'Source tree changed during verification.' }
+Assert-SourceIdentity $sourceIdentity (Get-SourceIdentity $projectRoot)
 if (-not $SkipDesktopChecks) {
     $published = Get-Content -LiteralPath (Join-Path $projectRoot 'artifacts\qa\published-tests.json') -Raw | ConvertFrom-Json
     if ($published.Build -ne ($version + '+' + $sourceCommit)) { throw 'Published assembly does not identify the verified source commit.' }
@@ -65,6 +69,7 @@ Write-Output ("SHA256: " + $hash.Hash)
         Version = $version
         Build = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $payloadPath 'BetterCM.exe')).ProductVersion
         SourceCommit = $sourceCommit
+        SourceTreeSHA256 = $sourceIdentity.SourceTreeSHA256
         Signed = [bool]$CertificateThumbprint
         SigningStatus = if ($CertificateThumbprint) { 'VerifiedTrustedTimestamped' } else { 'BlockedNoCertificate' }
         DesktopChecks = -not [bool]$SkipDesktopChecks
@@ -74,6 +79,31 @@ Write-Output ("SHA256: " + $hash.Hash)
         SignedUninstallerSHA256 = if ($signedUninstallers.Count -eq 1) { $signedUninstallers[0].SHA256 } else { $null }
         Files = $payloadFiles
     } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $projectRoot ('artifacts\qa\payload-' + $version + '.json')) -Encoding utf8
+    $portablePath = Join-Path $releaseDirectory ("BetterCM-" + $version + "-Portable-win-x64.zip")
+    [IO.Compression.ZipFile]::CreateFromDirectory($payloadPath, (Join-Path $stagingPath 'portable.zip'))
+    Copy-Item -LiteralPath (Join-Path $stagingPath 'portable.zip') -Destination $portablePath -Force
+    ((Get-FileHash -LiteralPath $portablePath).Hash + '  ' + [IO.Path]::GetFileName($portablePath)) |
+        Set-Content -LiteralPath ($portablePath + '.sha256') -Encoding utf8
+    $evidencePath = Join-Path $releaseDirectory 'evidence'
+    New-Item -ItemType Directory -Path $evidencePath -Force | Out-Null
+    foreach ($name in @('verified-publish.json', 'script-tests.json', 'dependency-audit.json', 'production-isolation.json', 'headless\headless-tests.trx', 'headless\headless-release-tests.trx', ('payload-' + $version + '.json'))) {
+        Copy-Item -LiteralPath (Join-Path $projectRoot ('artifacts\qa\' + $name)) -Destination $evidencePath -Force
+    }
+    $sourceIdentity | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $evidencePath 'verified-source.json') -Encoding utf8
+    if (-not $SkipDesktopChecks) { Copy-Item -LiteralPath (Join-Path $projectRoot 'artifacts\qa\published-tests.json') -Destination $evidencePath -Force }
+    $releaseFiles = @(Get-ChildItem -LiteralPath $evidencePath -File) + @(Get-Item -LiteralPath $setupPath, $portablePath)
+    [pscustomobject]@{
+        Version=$version; Build=($version + '+' + $sourceCommit); SourceCommit=$sourceCommit
+        SourceTreeSHA256=$sourceIdentity.SourceTreeSHA256; SourceClean=$true
+        Kind=if ($SkipDesktopChecks) { 'Internal' } else { 'Release' }
+        DesktopChecks=-not [bool]$SkipDesktopChecks; Signed=[bool]$CertificateThumbprint
+        Files=@($releaseFiles | Sort-Object FullName | ForEach-Object {
+            [pscustomobject]@{ Path=[IO.Path]::GetRelativePath($releaseDirectory, $_.FullName).Replace('\', '/'); Bytes=$_.Length; SHA256=(Get-FileHash -LiteralPath $_.FullName).Hash }
+        })
+    } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $releaseDirectory 'release-manifest.json') -Encoding utf8
+    Write-Output ('Portable: ' + $portablePath)
+    Write-Output ('Release identity and evidence: ' + (Join-Path $releaseDirectory 'release-manifest.json'))
+    Assert-SourceIdentity $sourceIdentity (Get-SourceIdentity $projectRoot)
     $buildCompleted = $true
 }
 finally {

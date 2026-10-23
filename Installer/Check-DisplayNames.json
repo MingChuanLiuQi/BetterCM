@@ -291,5 +291,10 @@
   "ShellOperation/C005": "真实 Shell 文件复制仍识别为文件传输",
   "ShellOperation/C006/FileGroupDescriptor": "虚拟文件格式能力探测保留兼容：FileGroupDescriptor",
   "ShellOperation/C006/FileGroupDescriptorW": "虚拟文件格式能力探测保留兼容：FileGroupDescriptorW",
-  "ShellOperation/C007": "文本与 DropEffect 元数据不误判为文件传输"
+  "ShellOperation/C007": "文本与 DropEffect 元数据不误判为文件传输",
+  "RequestTiming/Rendered/False": "呈现计时覆盖有无动画且不伪报键盘焦点：False",
+  "RequestTiming/Rendered/True": "呈现计时覆盖有无动画且不伪报键盘焦点：True",
+  "RequestTiming/CancelledGeneration": "取消菜单仅回调一次且不把后续呈现计入旧请求",
+  "RequestTiming/CancelCapture": "上下文捕获期间取消请求后不会迟到弹出菜单",
+  "RequestTiming/AppPipeline": "真实应用编排记录上下文至呈现的全部累计阶段"
 }

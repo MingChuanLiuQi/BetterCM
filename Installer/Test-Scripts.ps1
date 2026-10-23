@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Signing.ps1')
 . (Join-Path $PSScriptRoot 'ReleaseReports.ps1')
 . (Join-Path $PSScriptRoot 'VerificationReceipt.ps1')
+. (Join-Path $PSScriptRoot 'SourceIdentity.ps1')
 $fixture = Join-Path (Split-Path $PSScriptRoot) ('artifacts\script-fixture-' + [Guid]::NewGuid().ToString('N'))
 $testStorage = $fixture.Replace('script-fixture-', 'script-storage-')
 New-Item -ItemType Directory -Path $fixture -Force | Out-Null
@@ -18,6 +19,29 @@ function Assert-Rejected([string]$Id, [scriptblock]$Action) {
 }
 $fixtureSucceeded = $false
 try {
+$sourceFixture = Join-Path $fixture 'source-identity'
+New-Item -ItemType Directory -Path $sourceFixture -Force | Out-Null
+& git -C $sourceFixture init --quiet
+if ($LASTEXITCODE -ne 0) { throw 'Source identity fixture initialization failed.' }
+'artifacts/' | Set-Content -LiteralPath (Join-Path $sourceFixture '.gitignore') -Encoding utf8
+'baseline' | Set-Content -LiteralPath (Join-Path $sourceFixture '源 码.txt') -Encoding utf8
+& git -C $sourceFixture add --all
+& git -C $sourceFixture -c user.name=BetterCM-Fixture -c user.email=fixture@localhost commit --quiet -m 'Source identity fixture'
+if ($LASTEXITCODE -ne 0) { throw 'Source identity fixture commit failed.' }
+$cleanSource = Get-SourceIdentity $sourceFixture
+Assert-Check 'Source/CleanIncludesUnicodePath' ($cleanSource.SourceClean -and $cleanSource.Files.Count -eq 2 -and '源 码.txt' -in $cleanSource.Files.Path)
+New-Item -ItemType Directory -Path (Join-Path $sourceFixture 'artifacts') -Force | Out-Null
+'generated' | Set-Content -LiteralPath (Join-Path $sourceFixture 'artifacts\ignored.txt')
+Assert-SourceIdentity $cleanSource (Get-SourceIdentity $sourceFixture)
+Assert-Check 'Source/IgnoredBuildOutputsDoNotChangeIdentity' $true
+'changed' | Set-Content -LiteralPath (Join-Path $sourceFixture '源 码.txt') -Encoding utf8
+$editedSource = Get-SourceIdentity $sourceFixture
+Assert-Check 'Source/DetectsUncommittedContents' (-not $editedSource.SourceClean -and $editedSource.SourceTreeSHA256 -ne $cleanSource.SourceTreeSHA256)
+Assert-Rejected 'Source/RejectsChangedSource' { Assert-SourceIdentity $cleanSource $editedSource }
+'new file' | Set-Content -LiteralPath (Join-Path $sourceFixture 'new.cs')
+$newSource = Get-SourceIdentity $sourceFixture
+Assert-Check 'Source/IncludesUntrackedSource' ('new.cs' -in $newSource.Files.Path -and $newSource.SourceTreeSHA256 -ne $editedSource.SourceTreeSHA256)
+Assert-Rejected 'Source/RejectsLegacyReceiptWithoutTreeHash' { Assert-SourceIdentity ([pscustomobject]@{SourceCommit=$cleanSource.SourceCommit;SourceClean=$true}) $cleanSource }
 $receiptPath = New-Item -ItemType Directory -Path (Join-Path $fixture 'verified-payload')
 'one' | Set-Content -LiteralPath (Join-Path $receiptPath.FullName 'one.txt')
 'two' | Set-Content -LiteralPath (Join-Path $receiptPath.FullName 'two.txt')

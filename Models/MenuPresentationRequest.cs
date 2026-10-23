@@ -17,4 +17,6 @@ public sealed record MenuPresentationRequest
     public IReadOnlyList<ShellMenuNode>? NativeMenu { get; init; }
     public Func<Task>? NativeRefresh { get; init; }
     public Func<int?, Task<NativeMenuPage>>? NativeLoad { get; init; }
+    public Action? WindowShown { get; init; }
+    public Action<bool, bool>? PresentationObserved { get; init; }
 }

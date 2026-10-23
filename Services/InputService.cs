@@ -1,9 +1,10 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
 namespace BetterCM.Services;
 
-public readonly record struct TriggerRequest(nint Window, int X, int Y, bool PointerActivation = false, bool NavigationActivation = false);
+public readonly record struct TriggerRequest(nint Window, int X, int Y, bool PointerActivation = false, bool NavigationActivation = false, long ReceivedTimestamp = 0);
 public readonly record struct Hotkey(uint Modifiers, uint Key)
 {
     public static Hotkey Parse(string text)
@@ -109,7 +110,7 @@ public sealed class InputService : IDisposable
             {
                 if (request != null)
                 {
-                    _requests.Enqueue(request.Value);
+                    _requests.Enqueue(request.Value with { ReceivedTimestamp = Stopwatch.GetTimestamp() });
                     Interlocked.Increment(ref _acceptedClicks);
                     NativeMethods.PostMessage(Handle, NativeMethods.WM_TRIGGER, 0, 0);
                 }
@@ -191,7 +192,7 @@ public sealed class InputService : IDisposable
         if (msg == NativeMethods.WM_HOTKEY)
         {
             NativeMethods.GetCursorPos(out var point);
-            Triggered?.Invoke(new(NativeMethods.GetForegroundWindow(), point.X, point.Y)); handled = true;
+            Triggered?.Invoke(new(NativeMethods.GetForegroundWindow(), point.X, point.Y, ReceivedTimestamp: Stopwatch.GetTimestamp())); handled = true;
         }
         else if (msg == NativeMethods.WM_TRIGGER)
         {

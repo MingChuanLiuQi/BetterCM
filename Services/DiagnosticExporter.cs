@@ -8,7 +8,7 @@ public static partial class DiagnosticExporter
 {
     [GeneratedRegex(@"^\[(?<time>[^\]]+)\] pid=\d+ (?<scope>[a-zA-Z0-9-]+): (?<type>System\.[a-zA-Z0-9.]+)", RegexOptions.Multiline)]
     private static partial Regex LogHeader();
-    public static void Export(string destination, AppConfig config, double dpi, string? dataDirectory = null)
+    public static void Export(string destination, AppConfig config, double dpi, string? dataDirectory = null, IReadOnlyList<MenuRequestSample>? menuRequests = null)
     {
         using var stream = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         using var archive = new ZipArchive(stream, ZipArchiveMode.Create);
@@ -18,6 +18,7 @@ public static partial class DiagnosticExporter
             writer.Write(JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true }));
         }
         Add("environment.json", new { Version = AppInfo.Version, Build = AppInfo.Build, OS = Environment.OSVersion.VersionString, Architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(), Dpi = dpi, Time = DateTimeOffset.Now });
+        Add("menu-requests.json", new { Clock = "Monotonic; cumulative milliseconds from accepted right-button release or hotkey message", Observation = "WPF rendering callback completed; keyboard focus sampled separately; not hardware display latency or animation completion", Samples = menuRequests ?? [] });
         // Allowlist: never copy arbitrary strings, exception messages, stack traces, paths or shell titles.
         Add("configuration.json", new
         {

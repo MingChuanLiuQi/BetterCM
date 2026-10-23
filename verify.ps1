@@ -3,6 +3,8 @@ param([string]$PublishDirectory = 'artifacts\publish\win-x64', [switch]$SkipDesk
     [string]$TimestampServer = 'https://timestamp.digicert.com', [switch]$RequireSignedPublish)
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
+. (Join-Path $projectRoot 'Installer\SourceIdentity.ps1')
+$verifiedSource = Get-SourceIdentity $projectRoot
 $version = & (Join-Path $projectRoot 'Read-Version.ps1')
 $publishPath = [IO.Path]::GetFullPath((Join-Path $projectRoot $PublishDirectory))
 $artifactRoot = [IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts')) + [IO.Path]::DirectorySeparatorChar
@@ -74,16 +76,19 @@ foreach ($package in $assets.libraries.PSObject.Properties | Where-Object { $_.N
     }
 }
 function Write-VerificationReceipt([bool]$DesktopChecks) {
+    Assert-SourceIdentity $verifiedSource (Get-SourceIdentity $projectRoot)
     $commit = & git -C $projectRoot rev-parse HEAD
     if ($LASTEXITCODE -ne 0) { throw 'Cannot read verification source commit.' }
     $dirty = & git -C $projectRoot status --porcelain
     if ($LASTEXITCODE -ne 0) { throw 'Cannot read verification source status.' }
     [pscustomobject]@{
         Version = $version; SourceCommit = $commit; SourceClean = -not [bool]$dirty; DesktopChecks = $DesktopChecks
+        SourceTreeSHA256 = $verifiedSource.SourceTreeSHA256
         Files = @(Get-ChildItem -LiteralPath $publishPath -Recurse -File | Sort-Object FullName | ForEach-Object {
             [pscustomobject]@{ Path = [IO.Path]::GetRelativePath($publishPath, $_.FullName); SHA256 = (Get-FileHash -LiteralPath $_.FullName).Hash }
         })
     } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $qaFolder 'verified-publish.json') -Encoding utf8
+    $verifiedSource | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $qaFolder 'verified-source.json') -Encoding utf8
 }
 if ($SkipDesktopChecks) {
     Write-VerificationReceipt $false

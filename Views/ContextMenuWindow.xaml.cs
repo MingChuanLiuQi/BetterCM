@@ -21,6 +21,8 @@ public partial class ContextMenuWindow : Window
     private readonly HoverExpansion _moreHover = new();
     private readonly SurfaceAnimator _animator;
     private readonly MenuFirstFrame _firstFrame = new();
+    private Action<bool, bool>? _presentationObserver;
+    private EventHandler? _presentationRender;
     internal bool PresentationPending => _firstFrame.Pending;
     internal nint ContentHandle => _contentSource?.Handle ?? 0;
     internal double FirstFrameDelayMs => FirstFrameHeld ? _firstFrame.ReadyDelayMs : 0;
@@ -144,17 +146,18 @@ public partial class ContextMenuWindow : Window
             });
         };
         ThemeService.Attach(this);
-        IsVisibleChanged += (_, _) => { if (!IsVisible) { _firstFrame.Cancel(); CancelExpansion(); _moreHover.Cancel(); _animator.Reset(); if (_parentMenu != null && _contentSource != null) _contentSource.RootVisual = null; ObservationChanged?.Invoke(null); } };
-        Closed += (_, _) => { _windowClosed = true; _firstFrame.Cancel(); DisposeSubmenus(); CancelExpansion(); _moreHover.Cancel(); _animator.Reset(); _contentSource?.Dispose(); };
+        IsVisibleChanged += (_, _) => { if (!IsVisible) { CompletePresentationObservation(false); _firstFrame.Cancel(); CancelExpansion(); _moreHover.Cancel(); _animator.Reset(); if (_parentMenu != null && _contentSource != null) _contentSource.RootVisual = null; ObservationChanged?.Invoke(null); } };
+        Closed += (_, _) => { _windowClosed = true; CompletePresentationObservation(false); _firstFrame.Cancel(); DisposeSubmenus(); CancelExpansion(); _moreHover.Cancel(); _animator.Reset(); _contentSource?.Dispose(); };
         ActionsList.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler((_, e) => { if (e.VerticalChange != 0) CloseSubmenu(); }));
         SizeChanged += (_, _) => PublishBounds();
     }
-    public int ShowAt(MenuPresentationRequest request) => ShowAt(request.X, request.Y, request.Context, request.Config, request.Toolbar, request.Primary, request.More, request.Activate, request.Shell, request.ShellError, request.NativeMenu, request.NativeRefresh, request.NativeLoad);
+    public int ShowAt(MenuPresentationRequest request) => ShowAt(request.X, request.Y, request.Context, request.Config, request.Toolbar, request.Primary, request.More, request.Activate, request.Shell, request.ShellError, request.NativeMenu, request.NativeRefresh, request.NativeLoad, request.WindowShown, request.PresentationObserved);
 
-    internal int ShowAt(int x, int y, SelectedContext context, AppConfig config, List<MenuAction> toolbar, List<MenuAction> primary, List<MenuAction> more, bool activate = true, List<MenuAction>? shell = null, string? shellError = null, IReadOnlyList<ShellMenuNode>? nativeMenu = null, Func<Task>? nativeRefresh = null, Func<int?, Task<NativeMenuPage>>? nativeLoad = null)
+    internal int ShowAt(int x, int y, SelectedContext context, AppConfig config, List<MenuAction> toolbar, List<MenuAction> primary, List<MenuAction> more, bool activate = true, List<MenuAction>? shell = null, string? shellError = null, IReadOnlyList<ShellMenuNode>? nativeMenu = null, Func<Task>? nativeRefresh = null, Func<int?, Task<NativeMenuPage>>? nativeLoad = null, Action? windowShown = null, Action<bool, bool>? presentationObserved = null)
     {
         try
         {
+            CompletePresentationObservation(false);
             ObservationChanged?.Invoke(null);
             FirstFrameHeld = false;
             if (IsVisible) Hide();
@@ -201,18 +204,36 @@ public partial class ContextMenuWindow : Window
             _shownAt = (uint)Environment.TickCount; _opening = false;
             ActionsList.SelectedIndex = -1; PublishBounds();
             int shownGeneration = _generation;
+            windowShown?.Invoke();
+            _presentationObserver = presentationObserved;
             void BeginPresentation()
             {
                 if (_generation != shownGeneration || !IsOpen) return;
                 if (held) _animator.Play(config, true);
                 ActivateContent(activate, context.SourceWindow, handle);
                 PublishBounds();
+                if (_presentationObserver != null)
+                {
+                    var observer = _presentationObserver;
+                    _presentationRender = (_, _) =>
+                    {
+                        if (_presentationRender != null) CompositionTarget.Rendering -= _presentationRender;
+                        _presentationRender = null;
+                        Dispatcher.BeginInvoke(() =>
+                        {
+                            if (_generation == shownGeneration && ReferenceEquals(_presentationObserver, observer) && IsOpen)
+                                CompletePresentationObservation(true);
+                        }, System.Windows.Threading.DispatcherPriority.Background);
+                    };
+                    CompositionTarget.Rendering += _presentationRender;
+                }
             }
             if (held) _firstFrame.Present(Dispatcher, BeginPresentation); else BeginPresentation();
             return _generation;
         }
         catch
         {
+            CompletePresentationObservation(false);
             // A failed layout, observer, or HWND presentation must not leave a
             // cloaked/half-open menu behind or prevent the next right-click.
             foreach (Action cleanup in new Action[] { _firstFrame.Cancel, CancelExpansionAfterFailure, _moreHover.Cancel, _animator.Reset, CloseSubmenu, Hide })
@@ -221,6 +242,14 @@ public partial class ContextMenuWindow : Window
             throw;
         }
         finally { _opening = false; }
+    }
+    private void CompletePresentationObservation(bool rendered)
+    {
+        if (_presentationRender != null) CompositionTarget.Rendering -= _presentationRender;
+        _presentationRender = null;
+        var observer = _presentationObserver;
+        _presentationObserver = null;
+        observer?.Invoke(rendered, rendered && _activationSucceeded && Surface.IsKeyboardFocusWithin);
     }
     private void CancelExpansionAfterFailure() => CancelExpansion("呈现失败");
     private void ActivateContent(bool activate, nint sourceWindow, nint handle)

@@ -2,6 +2,12 @@
 
 ## 当前入口
 
+- [1.9.1 迭代说明](releases/1.9.1/ITERATION-1.9.1.md)：网络探测隔离、输入请求耗时、发布身份与候选构建。
+- [当前 QA](../QA.md)：本轮实际执行范围和证据定位。
+- [README](../README.md)、[架构](../ARCHITECTURE.md)、[更新记录](../CHANGELOG.md)、[安全](../SECURITY.md)、[许可证与来源](../THIRD-PARTY-NOTICES.md)。
+
+## 1.9.0 历史记录
+
 - [功能与边界修正](releases/1.9.0/FUNCTIONAL-FIX-1.9.0.md)：应用内配置合并、异常暂停恢复、Shell 失败回退、自定义程序后台探测和新增回归。
 
 - [第三轮稳定性修正](releases/1.9.0/STABILITY-FIX-1.9.0.md)：首帧测量契约、连续新进程验证和失败夹具维护。

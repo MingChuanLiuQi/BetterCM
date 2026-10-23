@@ -292,6 +292,11 @@
     "ShellOperation/C005",
     "ShellOperation/C006/FileGroupDescriptor",
     "ShellOperation/C006/FileGroupDescriptorW",
-    "ShellOperation/C007"
+    "ShellOperation/C007",
+    "RequestTiming/Rendered/False",
+    "RequestTiming/Rendered/True",
+    "RequestTiming/CancelledGeneration",
+    "RequestTiming/CancelCapture",
+    "RequestTiming/AppPipeline"
   ]
 }

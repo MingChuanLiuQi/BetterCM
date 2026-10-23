@@ -81,7 +81,7 @@ internal static class ReviewFixChecks
             foreach (bool classic in new[] { true, false })
             {
                 options.ClassicMenu = classic;
-                await (Task)show.Invoke(app, [32, 48, context, options])!;
+                await (Task)show.Invoke(app, [32, 48, context, options, null])!;
                 var toolbar = (ItemsControl)menu.FindName("Toolbar");
                 var actions = toolbar.Items.Cast<MenuAction>().Concat(menu.VisibleRows.Where(x => !x.IsGroup).Select(x => x.Action).OfType<MenuAction>()).ToArray();
                 check(new("ReviewFix/ShellFailure/" + classic, "Shell 失败保留路径与自定义动作并移除原生命令 " + classic), menu.IsOpen && actions.Any(x => x.Id == "path" && x.Enabled) && actions.Any(x => x.Id == options.CustomActions[0].Id && x.Enabled) && !actions.Any(x => ShellCommandMap.IsNative(x.Id)), null);
