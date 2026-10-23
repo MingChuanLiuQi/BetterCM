@@ -297,6 +297,17 @@
     "RequestTiming/Rendered/True",
     "RequestTiming/CancelledGeneration",
     "RequestTiming/CancelCapture",
-    "RequestTiming/AppPipeline"
+    "RequestTiming/AppPipeline",
+    "CustomAction/RecentPreview",
+    "CustomAction/EachTemplate",
+    "CustomAction/BatchTemplate",
+    "CustomAction/EditorSmallWorkArea",
+    "CustomAction/ImportPolicies",
+    "CustomAction/ClassicTransfer",
+    "CustomAction/ImportDraft",
+    "CustomAction/Launch/single/False",
+    "CustomAction/Launch/each/True",
+    "CustomAction/Launch/batch/False",
+    "CustomAction/Launch/batch/True"
   ]
 }

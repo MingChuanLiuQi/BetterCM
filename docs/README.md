@@ -2,9 +2,13 @@
 
 ## 当前入口
 
-- [1.9.1 迭代说明](releases/1.9.1/ITERATION-1.9.1.md)：网络探测隔离、输入请求耗时、发布身份与候选构建。
+- [1.10.0 迭代说明](releases/1.10.0/ITERATION-1.10.0.md)：自定义动作启动预览、模板和导入导出。
 - [当前 QA](../QA.md)：本轮实际执行范围和证据定位。
 - [README](../README.md)、[架构](../ARCHITECTURE.md)、[更新记录](../CHANGELOG.md)、[安全](../SECURITY.md)、[许可证与来源](../THIRD-PARTY-NOTICES.md)。
+
+## 1.9.1 历史记录
+
+- [1.9.1 QA](releases/1.9.1/QA-1.9.1.md) 与 [迭代说明](releases/1.9.1/ITERATION-1.9.1.md)：网络探测隔离、输入计时和发布身份。
 
 ## 1.9.0 历史记录
 

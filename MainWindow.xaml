@@ -330,7 +330,7 @@
           <Border x:Name="CustomModeNotice" Grid.Row="1" Style="{StaticResource ModeNotice}">
             <DockPanel>
               <Button DockPanel.Dock="Right" Content="使用增强模式" Click="UseEnhanced_Click" Margin="18,0,0,0" VerticalAlignment="Center" />
-              <TextBlock Text="自定义动作在增强模式下使用。已有动作会保留，切换后即可编辑。" TextWrapping="Wrap" LineHeight="21" VerticalAlignment="Center" />
+              <TextBlock Text="经典模式不显示自定义动作。可以导入导出备份，切换到增强模式后编辑和使用。" TextWrapping="Wrap" LineHeight="21" VerticalAlignment="Center" />
             </DockPanel>
           </Border>
           <Border x:Name="CustomListCard" Grid.Row="2" Style="{StaticResource ListCard}">
@@ -345,12 +345,16 @@
                   <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="{Binding Items.Count, ElementName=CustomGrid, StringFormat=已添加 {0} 个动作}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" />
-                <StackPanel x:Name="CustomCommands" Grid.Column="1" Orientation="Horizontal">
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                  <Button x:Name="ImportCustomButton" Content="导入" Click="ImportCustom_Click" Margin="0,0,8,0" />
+                  <Button x:Name="ExportCustomButton" Content="导出" Click="ExportCustom_Click" Margin="0,0,8,0" />
+                <StackPanel x:Name="CustomCommands" Orientation="Horizontal">
                   <Button Content="添加动作" Click="AddCustom_Click" BorderBrush="{DynamicResource AccentBrush}" Margin="0,0,8,0" />
                   <Button x:Name="EditCustomButton" Content="编辑" Click="EditCustom_Click" Margin="0,0,8,0" IsEnabled="False" />
                   <Button x:Name="MoveCustomUpButton" Content="上移" Click="MoveCustomUp_Click" Margin="0,0,8,0" IsEnabled="False" />
                   <Button x:Name="MoveCustomDownButton" Content="下移" Click="MoveCustomDown_Click" Margin="0,0,8,0" IsEnabled="False" />
                   <Button x:Name="RemoveCustomButton" Content="移除" Click="RemoveCustom_Click" IsEnabled="False" />
+                </StackPanel>
                 </StackPanel>
               </Grid>
           <DataGrid x:Name="CustomGrid" Grid.Row="1" SelectionChanged="CustomSelection_Changed">

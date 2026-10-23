@@ -38,6 +38,7 @@ public partial class MainWindow : Window
     private bool _loadedStartup;
     private bool _configurationConflict;
     private bool _validHotkey;
+    private bool _customTransferBusy;
     public MainWindow(App app) { _app = app; InitializeComponent(); SettingsWindowSizing.Attach(this); Title = AppInfo.DisplayName + " · 设置"; ThemeService.Attach(this); BuiltinGrid.ItemsSource = _actions; CustomGrid.ItemsSource = _custom; ShellGrid.ItemsSource = _shell; RefreshSettings(); }
     public void RefreshSettings()
         => LoadSettings(_app.Config.Clone(), StartupService.Enabled);
@@ -248,8 +249,46 @@ public partial class MainWindow : Window
     private void MoveCustomUp_Click(object sender, RoutedEventArgs e) => MoveCustom(-1);
     private void MoveCustomDown_Click(object sender, RoutedEventArgs e) => MoveCustom(1);
     private void MoveCustom(int direction) { if (CustomGrid.SelectedItem is CustomActionItem item) { int current = _custom.IndexOf(item), target = current + direction; if (target >= 0 && target < _custom.Count) { _custom.Move(current, target); CustomGrid.SelectedItem = item; RefreshCustomSelection(); } } }
-    private void AddCustom_Click(object sender, RoutedEventArgs e) { var dialog = new CustomActionWindow(new()) { Owner = this }; if (dialog.ShowDialog() == true) { _custom.Add(dialog.Result); RefreshCustomSelection(); } }
-    private void EditCustom_Click(object sender, RoutedEventArgs e) { if (CustomGrid.SelectedItem is CustomActionItem item) { var dialog = new CustomActionWindow(item) { Owner = this }; if (dialog.ShowDialog() == true) { _custom[_custom.IndexOf(item)] = dialog.Result; RefreshCustomSelection(); } } }
+    private void AddCustom_Click(object sender, RoutedEventArgs e) { var dialog = new CustomActionWindow(new(), _app.LastContext) { Owner = this }; if (dialog.ShowDialog() == true) { _custom.Add(dialog.Result); RefreshCustomSelection(); } }
+    private void EditCustom_Click(object sender, RoutedEventArgs e) { if (CustomGrid.SelectedItem is CustomActionItem item) { var dialog = new CustomActionWindow(item, _app.LastContext) { Owner = this }; if (dialog.ShowDialog() == true) { _custom[_custom.IndexOf(item)] = dialog.Result; RefreshCustomSelection(); } } }
+    private async void ImportCustom_Click(object sender, RoutedEventArgs e)
+    {
+        if (_customTransferBusy) return;
+        var picker = new Microsoft.Win32.OpenFileDialog { Filter = "BetterCM 自定义动作 (*.json)|*.json", CheckFileExists = true, Title = "导入自定义动作" };
+        if (picker.ShowDialog(this) != true) return;
+        SetTransferBusy(true);
+        try
+        {
+            var incoming = await Task.Run(() => CustomActionTransfer.ReadAsync(picker.FileName));
+            if (!IsVisible || _app.IsExiting) return;
+            var dialog = new CustomActionImportWindow(_custom, incoming) { Owner = this };
+            if (dialog.ShowDialog() == true && dialog.Result is { } result) ApplyCustomImport(result);
+        }
+        catch (Exception ex) { AppLog.Write("custom-import", ex); SaveStatus.Text = "导入失败，当前列表未改动：" + ex.Message; }
+        finally { SetTransferBusy(false); }
+    }
+    internal void ApplyCustomImport(CustomActionMerge result)
+    {
+        _custom.Clear(); foreach (var action in result.Actions) _custom.Add(action);
+        RefreshCustomSelection(); SaveStatus.Text = $"已加入待保存列表：新增 {result.Added}、替换 {result.Replaced}、跳过 {result.Skipped}。点击“保存设置”生效。";
+    }
+    private async void ExportCustom_Click(object sender, RoutedEventArgs e)
+    {
+        if (_customTransferBusy) return;
+        var picker = new Microsoft.Win32.SaveFileDialog { Filter = "BetterCM 自定义动作 (*.json)|*.json", FileName = "BetterCM-CustomActions.json", OverwritePrompt = true, Title = "导出当前动作列表" };
+        if (picker.ShowDialog(this) != true) return;
+        SetTransferBusy(true);
+        try
+        {
+            var actions = new AppConfig { CustomActions = _custom.ToList() }.Clone().CustomActions;
+            await Task.Run(() => CustomActionTransfer.WriteAsync(picker.FileName, actions));
+            SaveStatus.Text = $"已导出 {actions.Count} 个动作（包含程序路径与参数），未保存的列表修改也已包含。";
+        }
+        catch (Exception ex) { AppLog.Write("custom-export", ex); SaveStatus.Text = "导出失败：" + ex.Message; }
+        finally { SetTransferBusy(false); }
+    }
+    private void SetTransferBusy(bool busy)
+    { _customTransferBusy = busy; ImportCustomButton.IsEnabled = ExportCustomButton.IsEnabled = !busy; }
     private void RemoveCustom_Click(object sender, RoutedEventArgs e) { if (CustomGrid.SelectedItem is CustomActionItem item) { _custom.Remove(item); RefreshCustomSelection(); } }
     private void Preview_Click(object sender, RoutedEventArgs e)
     {

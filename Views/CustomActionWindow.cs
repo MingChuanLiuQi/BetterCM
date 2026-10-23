@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using BetterCM.Config;
 using BetterCM.Services;
+using BetterCM.Models;
 namespace BetterCM.Views;
 
 public sealed class CustomActionWindow : Window
@@ -12,14 +13,20 @@ public sealed class CustomActionWindow : Window
     private readonly CheckBox _admin = new() { Content = "以管理员身份运行" }, _primary = new() { Content = "直接显示在菜单第一层" };
     private readonly CheckBox _targetDirectory = new() { Content = "使用目标文件夹作为工作目录" };
     private readonly TextBlock _error = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly ComboBox _templates = new(), _previewChoice = new();
+    private readonly TextBox _preview = new() { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+    private readonly TextBlock _templateHint = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly SelectedContext? _recentContext;
+    private bool _previewReady;
     public CustomActionItem Result { get; private set; }
-    public CustomActionWindow(CustomActionItem original)
+    public CustomActionWindow(CustomActionItem original, SelectedContext? recentContext = null)
     {
+        _recentContext = recentContext == null ? null : recentContext with { Items = recentContext.Items.ToArray(), ShellParsingPaths = recentContext.ShellParsingPaths.ToArray() };
         Result = JsonSerializer.Deserialize<CustomActionItem>(JsonSerializer.Serialize(original))!;
         Style = (Style)FindResource(typeof(Window));
         ThemeService.Attach(this);
         Title = original.Title.Length == 0 ? "添加自定义动作" : "编辑自定义动作";
-        Width = 640; Height = Math.Min(740, SystemParameters.WorkArea.Height); MinWidth = 560; MinHeight = 540; WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Width = 1040; Height = Math.Min(800, SystemParameters.WorkArea.Height); MinWidth = 760; MinHeight = 540; WindowStartupLocation = WindowStartupLocation.CenterOwner;
         SettingsWindowSizing.Attach(this);
         var layout = new Grid { Margin = new Thickness(28) };
         layout.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) });
@@ -33,6 +40,18 @@ public sealed class CustomActionWindow : Window
             hint.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush"); panel.Children.Add(hint);
         }
         Hint("选择要打开的程序，再告诉它如何接收选中的文件。添加后仍需在设置页保存。");
+        var templateRow = new DockPanel { Margin = new Thickness(0, 12, 0, 0) };
+        var applyTemplate = new Button { Name = "ApplyActionTemplateButton", Content = "使用模板", Margin = new Thickness(10, 0, 0, 0) };
+        DockPanel.SetDock(applyTemplate, Dock.Right); templateRow.Children.Add(applyTemplate);
+        foreach (var template in CustomActionTemplates.All) _templates.Items.Add(new ComboBoxItem { Content = template.Title, Tag = template.Id, ToolTip = template.Description });
+        _templates.SelectedIndex = 0;
+        System.Windows.Automation.AutomationProperties.SetName(_templates, "常用动作模板");
+        templateRow.Children.Add(_templates); panel.Children.Add(templateRow);
+        _templateHint.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        _templateHint.Margin = new Thickness(0, 8, 0, 0); panel.Children.Add(_templateHint);
+        void TemplateHint() => _templateHint.Text = CustomActionTemplates.All.FirstOrDefault(x => x.Id == ((_templates.SelectedItem as ComboBoxItem)?.Tag as string))?.Description ?? "";
+        _templates.SelectionChanged += (_, _) => TemplateHint(); TemplateHint();
+        applyTemplate.Click += (_, _) => { if ((_templates.SelectedItem as ComboBoxItem)?.Tag is string id) ApplyTemplate(id); };
         void Field(string title, UIElement control)
         {
             panel.Children.Add(new TextBlock { Text = title, Margin = new Thickness(0, 18, 0, 8) });
@@ -75,6 +94,15 @@ public sealed class CustomActionWindow : Window
         panel.Children.Add(_targetDirectory);
         Hint("默认在程序所在目录运行。只有程序确实需要时才勾选此项；目标文件夹中的 DLL 或插件可能被该程序加载。{dir} 参数仍始终表示目标所在目录。");
         panel.Children.Add(_admin); panel.Children.Add(_primary);
+        _previewChoice.Items.Add("示例：一个文件"); _previewChoice.Items.Add("示例：两个含空格的文件"); _previewChoice.Items.Add("示例：一个文件夹");
+        if (_recentContext?.HasFileTarget == true) _previewChoice.Items.Add("最近一次右键选区");
+        _previewChoice.SelectedIndex = 0;
+        System.Windows.Automation.AutomationProperties.SetName(_previewChoice, "预览使用的选区");
+        System.Windows.Automation.AutomationProperties.SetName(_preview, "启动参数预览");
+        foreach (var box in new[] { _title, _executable, _arguments, _extensions }) box.TextChanged += (_, _) => RefreshPreview();
+        _mode.SelectionChanged += (_, _) => RefreshPreview(); _previewChoice.SelectionChanged += (_, _) => RefreshPreview();
+        foreach (var box in new[] { _admin, _targetDirectory })
+        { box.Checked += (_, _) => RefreshPreview(); box.Unchecked += (_, _) => RefreshPreview(); }
         _error.Visibility = Visibility.Collapsed;
         _error.Margin = new Thickness(0, 12, 0, 0);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
@@ -85,22 +113,79 @@ public sealed class CustomActionWindow : Window
         {
             try
             {
-                Result.Title = _title.Text.Trim(); Result.Executable = ExecutableResolver.Require(_executable.Text.Trim()); Result.Arguments = _arguments.Text;
-                Result.MatchExtensions = _extensions.Text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
-                Result.SelectionMode = ((ComboBoxItem)_mode.SelectedItem).Tag.ToString()!; Result.RunAsAdmin = _admin.IsChecked == true; Result.IsPrimary = _primary.IsChecked == true;
-                Result.UseTargetWorkingDirectory = _targetDirectory.IsChecked == true;
-                ConfigStore.Validate(new() { CustomActions = [Result] }); ActionExecutor.ParseArguments(Result.Arguments);
+                var draft = ReadDraft(); draft.Executable = ExecutableResolver.Require(draft.Executable);
+                ConfigStore.Validate(new() { CustomActions = [draft] }); ActionExecutor.ParseArguments(draft.Arguments);
+                Result = draft;
                 DialogResult = true;
             }
             catch (Exception ex) { _error.Text = ex.Message; _error.Visibility = Visibility.Visible; }
         };
         buttons.Children.Add(cancel); buttons.Children.Add(save);
-        layout.Children.Add(new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+        var content = new Grid();
+        content.ColumnDefinitions.Add(new() { Width = new GridLength(1.15, GridUnitType.Star) });
+        content.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        content.Children.Add(new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Margin = new Thickness(0, 0, 12, 0) });
+        var previewPanel = new Grid { Margin = new Thickness(12, 0, 0, 0) };
+        foreach (var height in new[] { GridLength.Auto, GridLength.Auto, GridLength.Auto, new GridLength(1, GridUnitType.Star) }) previewPanel.RowDefinitions.Add(new() { Height = height });
+        previewPanel.Children.Add(new TextBlock { Text = "启动预览", FontSize = 23, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 16) });
+        Grid.SetRow(_previewChoice, 1); previewPanel.Children.Add(_previewChoice);
+        var previewHint = new TextBlock { Text = "只预览参数，不运行程序或检查文件是否存在。示例名称按文件类型调整。", TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 10, 0, 12) };
+        previewHint.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush"); Grid.SetRow(previewHint, 2); previewPanel.Children.Add(previewHint);
+        Grid.SetRow(_preview, 3); previewPanel.Children.Add(_preview); Grid.SetColumn(previewPanel, 1); content.Children.Add(previewPanel);
+        layout.Children.Add(content);
         var footer = new StackPanel();
         footer.Children.Add(_error); footer.Children.Add(buttons);
         Grid.SetRow(footer, 1); layout.Children.Add(footer);
         Content = layout;
+        _previewReady = true; RefreshPreview();
     }
+    private CustomActionItem ReadDraft() => new()
+    {
+        Id = Result.Id,
+        Enabled = Result.Enabled,
+        Title = _title.Text.Trim(),
+        Executable = _executable.Text.Trim(),
+        Arguments = _arguments.Text,
+        MatchExtensions = _extensions.Text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList(),
+        SelectionMode = ((_mode.SelectedItem as ComboBoxItem)?.Tag as string) ?? "single",
+        RunAsAdmin = _admin.IsChecked == true,
+        IsPrimary = _primary.IsChecked == true,
+        UseTargetWorkingDirectory = _targetDirectory.IsChecked == true
+    };
+    internal void ApplyTemplate(string id)
+    {
+        var template = CustomActionTemplates.All.First(x => x.Id == id); var action = template.Create();
+        _templates.SelectedItem = _templates.Items.Cast<ComboBoxItem>().First(x => (string)x.Tag == id);
+        _previewReady = false;
+        _title.Text = action.Title; _executable.Text = action.Executable; _arguments.Text = action.Arguments;
+        _extensions.Text = string.Join(", ", action.MatchExtensions); _mode.SelectedIndex = action.SelectionMode switch { "each" => 1, "batch" => 2, _ => 0 };
+        _admin.IsChecked = action.RunAsAdmin; _targetDirectory.IsChecked = action.UseTargetWorkingDirectory;
+        _previewReady = true; RefreshPreview();
+    }
+    private void RefreshPreview()
+    {
+        if (!_previewReady) return;
+        try
+        {
+            var action = ReadDraft(); bool disabled = !action.Enabled; action.Enabled = true;
+            if (string.IsNullOrWhiteSpace(action.Title)) action.Title = "动作预览";
+            string extension = action.MatchExtensions.FirstOrDefault(x => x.StartsWith('.') && x.Length is > 1 and <= 16 && x[1..].All(char.IsAsciiLetterOrDigit)) ?? ".txt";
+            string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "BetterCM 示例");
+            var context = _previewChoice.SelectedIndex switch
+            {
+                3 when _recentContext != null => _recentContext,
+                2 => new SelectedContext { CurrentDirectory = folder, Items = [new(Path.Combine(folder, "示例 文件夹"), true)] },
+                1 => new SelectedContext { CurrentDirectory = folder, Items = [new(Path.Combine(folder, "报告 2026" + extension), false), new(Path.Combine(folder, "项目 {dir}" + extension), false)] },
+                _ => new SelectedContext { CurrentDirectory = folder, Items = [new(Path.Combine(folder, "报告 2026" + extension), false)] }
+            };
+            _preview.Text = (disabled ? "当前动作已停用；以下为启用后的参数预览。\n" : "") + new CustomActionPlan(action, context).Describe();
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or InvalidDataException)
+        { _preview.Text = "暂不能预览：" + ex.Message; }
+    }
+    internal string PreviewText => _preview.Text;
+    internal string SelectedTemplateTitle => (_templates.SelectedItem as ComboBoxItem)?.Content as string ?? "";
+    internal void SelectPreview(int index) => _previewChoice.SelectedIndex = index;
     internal void ApplySelectedExecutable(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return;

@@ -1,12 +1,12 @@
 # BetterCM
 
-BetterCM 为 Windows 11 x64 的经典右键菜单提供现代外观。当前版本为 **1.9.1**，重点为网络程序探测隔离、真实菜单请求计时和发布身份核对。功能、验证范围及限制见 [1.9.1 迭代说明](docs/releases/1.9.1/ITERATION-1.9.1.md) 与 [当前 QA](QA.md)。[文档索引](docs/README.md) 区分当前说明与历史证据。
+BetterCM 为 Windows 11 x64 的经典右键菜单提供现代外观。当前版本为 **1.10.0**，新增自定义动作启动预览、常用模板和动作导入导出。功能、验证范围及限制见 [1.10.0 迭代说明](docs/releases/1.10.0/ITERATION-1.10.0.md) 与 [当前 QA](QA.md)。[文档索引](docs/README.md) 区分当前说明与历史证据。
 
 ## 安装与使用
 
-从 [GitHub Releases 下载 1.9.1 安装包或便携包](https://github.com/MingChuanLiuQi/BetterCM/releases/tag/v1.9.1)，同时提供校验文件、源码和发布证据。本版未签名；验证范围以 Release 说明和证据清单为准。
+从 [GitHub Releases 下载 1.10.0 安装包或便携包](https://github.com/MingChuanLiuQi/BetterCM/releases/tag/v1.10.0)，同时提供校验文件、源码和发布证据。本版未签名；验证范围以 Release 说明和证据清单为准。
 
-候选构建按次保存在 `artifacts/candidates/1.9.1-<UTC时间>-<标识>/`，其中 `package/` 放置 Setup、便携 ZIP、校验文件及发布证据，顶层附源码 ZIP、Git bundle 和 `candidate-manifest.json`。只有成功生成清单的目录才是完整候选；不能用目录名或版本号代替提交及哈希核对。默认安装到 `%LOCALAPPDATA%\Programs\BetterCM`，不需要管理员权限。安装包包含 .NET/WPF 与 Windows App SDK 材质组件，登录自启及桌面快捷方式默认均不勾选。
+正式构建保存在 `artifacts/releases/1.10.0/`。开发候选按次保存在 `artifacts/candidates/1.10.0-<UTC时间>-<标识>/`，其中 `package/` 放置 Setup、便携 ZIP、校验文件及发布证据，顶层附源码 ZIP、Git bundle 和 `candidate-manifest.json`。只有成功生成清单的目录才是完整候选；不能用目录名或版本号代替提交及哈希核对。默认安装到 `%LOCALAPPDATA%\Programs\BetterCM`，不需要管理员权限。安装包包含 .NET/WPF 与 Windows App SDK 材质组件，登录自启及桌面快捷方式默认均不勾选。
 
 - 普通右键接管 Explorer 文件视图、导航栏和桌面；开始按下前按住 Shift，使用 Windows 菜单或原生右键拖动。
 - 默认经典模式保持 Shell 的顺序、分隔线、子菜单、禁用、勾选、默认动作及访问键。子菜单向侧边展开，空间不足时向左打开；不额外插入增强动作。
@@ -17,6 +17,9 @@ BetterCM 为 Windows 11 x64 的经典右键菜单提供现代外观。当前版�
 - 手动关闭经典模式后，可用内置动作、自定义程序、隐藏和固定到一级菜单的偏好。自定义参数支持 `{path}`、`{dir}`、`{name}` 及整个选区的独立 `{paths}` 参数。替换只扫描原模板，文件名里的花括号保持原样。
 - 自定义程序使用绝对 `.exe` / `.com` 路径；脚本需显式选择解释器。支持单选、逐个和一次批量。逐个模式在后台串行启动，提供进度和取消；取消停止后续启动，已启动的程序继续运行。程序缺失时禁用菜单项并保留配置。
 - 自定义动作默认使用程序目录作为工作目录；仅显式勾选后使用目标目录。目标目录可能影响第三方程序加载 DLL/插件，请按需启用。
+- 编辑自定义动作时，右侧实时展示程序、独立参数、工作目录和启动次数，可切换一个文件、两个文件、文件夹及最近一次选区。预览复用执行器的参数计划，不会运行程序或检查示例文件是否存在；停用动作也可预览，但不会因此启用。
+- 常用模板包括记事本、VS Code、Windows Terminal 和 PowerShell。Code.exe / wt.exe 需要选定本机程序，或在保存时从 PATH 解析。PowerShell 模板不改变执行策略，也不默认提升权限。
+- 自定义动作页支持 JSON 导入导出，经典模式也可备份。导入先确认内容，并选择跳过重复项、替换或保留两份，加入待保存列表后仍需保存；不会自动切换增强模式或启动程序。文件最多 1 MiB、500 项，仅包含动作，不修改主题或快捷键。
 - 本地与网络程序探测分别最多四个并发；UNC 和映射网络盘使用独立线程，单次菜单等待仍不超过 250 ms。失败或超时的网络路径退避两秒，不占用本地探测名额。
 - 诊断页显示最近一次真实输入请求的累计阶段耗时；导出诊断包包含最近 32 次已结束请求，区分取消、被后续请求替代、呈现及焦点状态，不包含目标路径或文件名。计时从接管右键松开或接收热键消息开始，呈现观测不代表显示器扫描或动画完成。
 - 用户配置和日志位于 `%LOCALAPPDATA%\BetterCM`。保存采用原子替换，上一份配置保留为 `.bak`；配置损坏或格式过新时保护原文件并暂停保存。文件监听错误后会记录日志并重建监听。
@@ -24,7 +27,7 @@ BetterCM 为 Windows 11 x64 的经典右键菜单提供现代外观。当前版�
 
 ## 构建、验证与发布
 
-SDK 由 `global.json` 固定，安装器需要 Inno Setup 6.5+。版本唯一来源为 `Version.props`，程序集、manifest、设置、托盘、报告和安装包均派生自它。运行 `./Bump-Version.ps1 -Version 1.10.0` 可修改下一版本；脚本通过 MSBuild 求值读取版本。
+SDK 由 `global.json` 固定，安装器需要 Inno Setup 6.5+。版本唯一来源为 `Version.props`，程序集、manifest、设置、托盘、报告和安装包均派生自它。运行 `./Bump-Version.ps1 -Version 1.11.0` 可修改下一版本；脚本通过 MSBuild 求值读取版本。
 
 ```powershell
 dotnet test .\Tests\BetterCM.Tests.csproj -c QA

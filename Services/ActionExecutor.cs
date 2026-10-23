@@ -67,20 +67,17 @@ public sealed class ActionExecutor(ShellBridge shell)
     }
     public async Task ExecuteCustomAsync(CustomActionItem action, SelectedContext ctx, CancellationToken cancellation = default, IProgress<(double Value, string Text)>? progress = null)
     {
-        if (!ActionCatalog.Matches(action, ctx)) throw new InvalidOperationException("自定义动作不适用于当前选区");
-        var tokens = ParseArguments(action.Arguments);
-        var targets = (action.SelectionMode == "each" ? ctx.TargetPaths : [ctx.PrimaryPath]).ToArray();
-        int completed = 0;
         cancellation.ThrowIfCancellationRequested();
+        var plan = new CustomActionPlan(action, ctx);
+        int completed = 0;
         using var worker = new StaWorker("BetterCM custom actions");
-        foreach (var path in targets)
+        for (int index = 0; index < plan.Count; index++)
         {
             cancellation.ThrowIfCancellationRequested();
-            var directory = Directory.Exists(path) ? path : Path.GetDirectoryName(path) ?? ctx.CurrentDirectory;
-            var args = tokens.SelectMany(token => token == "{paths}" ? ctx.TargetPaths : [PathFormatter.Expand(token, path, directory)]).ToArray();
+            var launch = plan.Launch(index);
             // Serialize launches on a worker STA: bounds concurrency and keeps UAC/Shell execution off the UI thread.
-            await worker.Run(() => { cancellation.ThrowIfCancellationRequested(); Process.Start(CreateCustomStartInfo(action, args, directory))?.Dispose(); return true; });
-            progress?.Report(((double)++completed / targets.Length, $"已启动 {completed} / {targets.Length} 个项目"));
+            await worker.Run(() => { cancellation.ThrowIfCancellationRequested(); Process.Start(CreateStartInfo(plan.Executable, launch.Arguments, launch.WorkingDirectory, plan.RunAsAdmin))?.Dispose(); return true; });
+            progress?.Report(((double)++completed / plan.Count, $"已启动 {completed} / {plan.Count} 个项目"));
         }
     }
     public static string[] ParseArguments(string arguments)

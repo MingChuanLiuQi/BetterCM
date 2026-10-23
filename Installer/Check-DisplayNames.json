@@ -296,5 +296,16 @@
   "RequestTiming/Rendered/True": "呈现计时覆盖有无动画且不伪报键盘焦点：True",
   "RequestTiming/CancelledGeneration": "取消菜单仅回调一次且不把后续呈现计入旧请求",
   "RequestTiming/CancelCapture": "上下文捕获期间取消请求后不会迟到弹出菜单",
-  "RequestTiming/AppPipeline": "真实应用编排记录上下文至呈现的全部累计阶段"
+  "RequestTiming/AppPipeline": "真实应用编排记录上下文至呈现的全部累计阶段",
+  "CustomAction/RecentPreview": "参数预览可使用最近选区且保留花括号文件名",
+  "CustomAction/EachTemplate": "记事本模板预览逐个启动且保留原动作草稿身份",
+  "CustomAction/BatchTemplate": "批量模板将两个路径展示为两项独立参数",
+  "CustomAction/EditorSmallWorkArea": "预览编辑器在较低工作区下保留可达的应用按钮",
+  "CustomAction/ImportPolicies": "导入确认可切换跳过替换及保留两份",
+  "CustomAction/ClassicTransfer": "经典模式允许导入导出而不会开启动作编辑或切换模式",
+  "CustomAction/ImportDraft": "导入仅更新待保存列表且可撤销，不改变已保存配置",
+  "CustomAction/Launch/single/False": "真实自定义启动与预览计划一致：single/False",
+  "CustomAction/Launch/each/True": "真实自定义启动与预览计划一致：each/True",
+  "CustomAction/Launch/batch/False": "真实自定义启动与预览计划一致：batch/False",
+  "CustomAction/Launch/batch/True": "真实自定义启动与预览计划一致：batch/True"
 }
