@@ -8,12 +8,13 @@ internal sealed class WorkspaceBackupPanel : UserControl
 {
     private readonly Func<AppConfig> _read;
     private readonly Func<string> _baseline;
+    private readonly Func<IEnumerable<string>> _protectedPaths;
     private readonly Action<AppConfig, string> _apply;
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 14, 0, 0) };
     private readonly Button _export = new() { Content = "导出完整备份" }, _import = new() { Content = "恢复或选择性导入", Margin = new Thickness(10, 0, 0, 0) };
-    internal WorkspaceBackupPanel(Func<AppConfig> read, Func<string> baseline, Action<AppConfig, string> apply)
+    internal WorkspaceBackupPanel(Func<AppConfig> read, Func<string> baseline, Action<AppConfig, string> apply, Func<IEnumerable<string>>? protectedPaths = null)
     {
-        _read = read; _baseline = baseline; _apply = apply;
+        _read = read; _baseline = baseline; _apply = apply; _protectedPaths = protectedPaths ?? (() => []);
         var panel = new StackPanel { Margin = new Thickness(4, 12, 18, 0) };
         panel.Children.Add(new TextBlock { Text = "备份与迁移", FontSize = 23, Margin = new Thickness(0, 0, 0, 14) });
         panel.Children.Add(new TextBlock { Text = "一个文件保存动作及运行参数、规则与分组、菜单方案、收藏目录、重命名预设，以及外观、快捷键和菜单行为。导出包含当前未保存的编辑。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
@@ -28,7 +29,7 @@ internal sealed class WorkspaceBackupPanel : UserControl
         var dialog = new Microsoft.Win32.SaveFileDialog { Title = "导出完整工作区备份", FileName = "BetterCM-Workspace.json", Filter = "BetterCM 工作区备份 (*.json)|*.json", OverwritePrompt = true };
         if (dialog.ShowDialog(Window.GetWindow(this)) != true) return;
         Busy(true);
-        try { var snapshot = _read().Clone(); await Task.Run(() => WorkspaceTransfer.WriteAsync(dialog.FileName, snapshot)); _status.Text = "备份已导出，包含当前未保存编辑、路径与启动参数。"; }
+        try { var snapshot = _read().Clone(); await Task.Run(() => WorkspaceTransfer.WriteAsync(dialog.FileName, snapshot, _protectedPaths())); _status.Text = "备份已导出，包含当前未保存编辑、路径与启动参数。"; }
         catch (Exception ex) { _status.Text = "导出失败：" + ex.Message; }
         finally { Busy(false); }
     }

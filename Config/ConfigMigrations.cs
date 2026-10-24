@@ -60,6 +60,10 @@ public static class ConfigMigrations
                         foreach (var action in config.CustomActions.Where(x => x != null && x.Parameters?.Count == 0 && x.Arguments?.Contains("{input:", StringComparison.Ordinal) == true)) action.PreserveInputLiterals = true;
                     version = 4;
                     break;
+                case 4:
+                    config.KeepRenameHistory = true;
+                    version = 5;
+                    break;
                 default: throw new InvalidDataException("缺少配置迁移步骤");
             }
         }

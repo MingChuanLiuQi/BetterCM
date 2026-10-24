@@ -64,8 +64,9 @@ internal static class WorkspaceTransfer
         }
         return Deserialize(new UTF8Encoding(false, true).GetString(buffer.ToArray()).TrimStart('\uFEFF'));
     }
-    internal static async Task WriteAsync(string path, AppConfig config)
+    internal static async Task WriteAsync(string path, AppConfig config, IEnumerable<string>? protectedPaths = null)
     {
+        BackupDestinationGuard.Check(path, protectedPaths);
         string json = Serialize(config), target = Path.GetFullPath(path), temporary = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {

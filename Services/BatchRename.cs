@@ -42,6 +42,13 @@ public sealed partial class BatchRename
     private readonly List<Change> _changes;
     private bool _undone;
     private BatchRename(List<Change> changes) => _changes = changes;
+    internal IReadOnlyList<RenameHistoryChange> Snapshot() => _changes.Select(x => new RenameHistoryChange(FileSystemPaths.Normalize(x.Row.Source), FileSystemPaths.Normalize(x.Row.Target), FileSystemPaths.Normalize(x.Current), x.Row.IsDirectory, x.Identity, x.Hash)).ToArray();
+    internal static BatchRename FromSnapshot(IReadOnlyList<RenameHistoryChange> changes)
+    {
+        RenameHistoryStore.ValidateChanges(changes);
+        if (changes.Any(x => x.Current != x.Target)) throw new InvalidDataException("历史任务未完整完成，不能自动撤销");
+        return new(changes.Select(x => new Change(new(x.Source, x.Target, x.IsDirectory, ""), x.Identity, x.Hash) { Current = x.Current }).ToList());
+    }
     [GeneratedRegex(@"^(CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])(?:\.|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ReservedName();
     internal static string NameError(string name)

@@ -82,8 +82,9 @@ internal static class CustomActionTransfer
         }
         return Deserialize(new UTF8Encoding(false, true).GetString(buffer.ToArray()).TrimStart('\uFEFF'));
     }
-    internal static async Task WriteAsync(string path, IEnumerable<CustomActionItem> actions)
+    internal static async Task WriteAsync(string path, IEnumerable<CustomActionItem> actions, IEnumerable<string>? protectedPaths = null)
     {
+        BackupDestinationGuard.Check(path, protectedPaths);
         string json = Serialize(actions);
         string target = Path.GetFullPath(path), temporary = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try

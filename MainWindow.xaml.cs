@@ -42,7 +42,7 @@ public partial class MainWindow : Window
     private bool _validHotkey;
     private bool _customTransferBusy;
     private readonly MenuWorkspaceEditor _workspace = new();
-    public MainWindow(App app) { _app = app; InitializeComponent(); WorkspaceHost.Content = _workspace; WorkspaceBackupHost.Content = new WorkspaceBackupPanel(ReadSettings, () => ConfigJson.Snapshot(_app.Config), ApplyWorkspaceImport); SettingsWindowSizing.Attach(this); Title = AppInfo.DisplayName + " · 设置"; ThemeService.Attach(this); BuiltinGrid.ItemsSource = _actions; CustomGrid.ItemsSource = _custom; ShellGrid.ItemsSource = _shell; RefreshSettings(); }
+    public MainWindow(App app) { _app = app; InitializeComponent(); WorkspaceHost.Content = _workspace; WorkspaceBackupHost.Content = new WorkspaceBackupPanel(ReadSettings, () => ConfigJson.Snapshot(_app.Config), ApplyWorkspaceImport, () => _app.ProtectedExportPaths); RenameHistoryHost.Content = new RenameHistoryPanel(app); SettingsWindowSizing.Attach(this); Title = AppInfo.DisplayName + " · 设置"; ThemeService.Attach(this); BuiltinGrid.ItemsSource = _actions; CustomGrid.ItemsSource = _custom; ShellGrid.ItemsSource = _shell; RefreshSettings(); }
     internal void ApplyWorkspaceImport(AppConfig imported, string expectedBaseline)
     {
         if (_configurationConflict || _loadedConfig != ConfigJson.Snapshot(_app.Config) || expectedBaseline != ConfigJson.Snapshot(_app.Config)) { NotifyConfigurationChanged(); throw new IOException("已保存配置发生变化，请先撤销冲突或重新加载，再导入并检查差异。"); }
@@ -297,7 +297,7 @@ public partial class MainWindow : Window
         try
         {
             var actions = new AppConfig { CustomActions = _custom.ToList() }.Clone().CustomActions;
-            await Task.Run(() => CustomActionTransfer.WriteAsync(picker.FileName, actions));
+            await Task.Run(() => CustomActionTransfer.WriteAsync(picker.FileName, actions, _app.ProtectedExportPaths));
             SaveStatus.Text = $"已导出 {actions.Count} 个动作（包含程序路径与参数），未保存的列表修改也已包含。";
         }
         catch (Exception ex) { AppLog.Write("custom-export", ex); SaveStatus.Text = "导出失败：" + ex.Message; }

@@ -2,9 +2,13 @@
 
 ## 当前入口
 
-- [2.1.0 迭代说明](releases/2.1.0/ITERATION-2.1.0.md)：完整配置备份、重命名预设与排序、运行参数，以及文件操作和路径修正。
+- [2.2.0 迭代说明](releases/2.2.0/ITERATION-2.2.0.md)：重命名历史、跨窗口撤销、勾选预览和重新编号，以及导出、预设及排序修复。
 - [当前 QA](../QA.md)：本轮实际执行范围和证据定位。
 - [README](../README.md)、[架构](../ARCHITECTURE.md)、[更新记录](../CHANGELOG.md)、[安全](../SECURITY.md)、[许可证与来源](../THIRD-PARTY-NOTICES.md)。
+
+## 2.1.0 历史记录
+
+- [2.1.0 QA](releases/2.1.0/QA-2.1.0.md) 与 [迭代说明](releases/2.1.0/ITERATION-2.1.0.md)：完整配置备份、重命名预设与排序、运行参数。
 
 ## 2.0.0 历史记录
 

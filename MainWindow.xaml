@@ -496,6 +496,9 @@
       <TabItem Header="备份与迁移">
         <ContentControl x:Name="WorkspaceBackupHost" />
       </TabItem>
+      <TabItem Header="操作历史">
+        <ContentControl x:Name="RenameHistoryHost" />
+      </TabItem>
       <TabItem Header="诊断">
         <Grid Margin="4,0,8,0">
           <Grid.RowDefinitions>

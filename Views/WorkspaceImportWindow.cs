@@ -97,6 +97,7 @@ internal sealed class WorkspaceImportWindow : Window
                 [nameof(AppConfig.ShowFileDetails)] = "显示文件详情",
                 [nameof(AppConfig.IncludeShellActions)] = "包含系统菜单动作",
                 [nameof(AppConfig.ShowNotifications)] = "通知",
+                [nameof(AppConfig.KeepRenameHistory)] = "保留重命名历史",
                 [nameof(AppConfig.ShowMoreItems)] = "折叠更多项目",
                 [nameof(AppConfig.CompactMenu)] = "紧凑菜单",
                 [nameof(AppConfig.MoreHoverDelayMs)] = "更多项目悬停延时",

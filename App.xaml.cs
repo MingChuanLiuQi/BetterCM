@@ -21,6 +21,15 @@ public partial class App : Application, IMenuHost
     private RegisteredWaitHandle? _wakeWait, _exitWait;
     private Forms.NotifyIcon? _tray;
     private BatchRenameWindow? _renameWindow;
+    private RenameHistoryWindow? _historyWindow;
+    internal bool HasRenameWindow => _renameWindow != null;
+    internal string[] ProtectedExportPaths => [ConfigPath, ConfigPath + ".bak", RenameHistoryStore.DefaultPath];
+    internal void ShowRenameHistory(RenameHistoryEntry entry)
+    {
+        if (_renameWindow != null) { _renameWindow.Activate(); Notify("请先关闭批量重命名窗口，再查看历史撤销。"); return; }
+        if (_historyWindow != null) { _historyWindow.Activate(); return; }
+        _historyWindow = new(entry); _historyWindow.Closed += (_, _) => _historyWindow = null; _historyWindow.Show();
+    }
     private readonly ConfigStore _store = new();
     private readonly ExplorerContextService _contexts = new();
     private readonly ShellBridge _shell = new();
@@ -409,6 +418,7 @@ public partial class App : Application, IMenuHost
     {
         if (id == "batch-rename")
         {
+            if (_historyWindow != null) { _historyWindow.Activate(); Notify("请先关闭历史详情窗口，再开始新的重命名。"); return; }
             if (_renameWindow != null) { _renameWindow.Activate(); Notify("请先完成或关闭当前批量重命名窗口，再处理另一组选区。"); return; }
             _renameWindow = new(ctx); _renameWindow.Closed += (_, _) => _renameWindow = null; _renameWindow.Show(); return;
         }
@@ -545,6 +555,10 @@ public partial class App : Application, IMenuHost
             if (_renameWindow is { } rename && !await rename.StopAsync())
             {
                 IsExiting = false; rename.Activate(); Notify("重命名处理遇到错误，请查看窗口中的结果或保留位置后再退出。", true); return;
+            }
+            if (_historyWindow is { } history && !await history.StopAsync())
+            {
+                IsExiting = false; history.Activate(); Notify("历史撤销遇到错误，请查看文件位置后再退出。", true); return;
             }
             Shutdown();
         }

@@ -45,7 +45,7 @@ internal static class Iteration210Checks
             await rename.PreviewAsync(); await rename.Dispatcher.InvokeAsync(rename.UpdateLayout, System.Windows.Threading.DispatcherPriority.ContextIdle);
             CustomActionChecks.Capture(rename, Path.Combine(root, "rename-presets.png"));
             rename.ApplyOptions(new() { Prefix = "?" }); await rename.PreviewAsync();
-            var invalid = Descendants<DataGrid>(rename).Single().Items.Cast<RenameRow>().Single();
+            var invalid = Descendants<DataGrid>(rename).Single().Items.Cast<RenamePreviewRow>().Select(x => x.Plan).Single();
             check(new("Iteration210/InvalidNamePreview", "无效重命名预览显示拟生成的错误名称"), invalid.NewName.StartsWith('?') && invalid.Error.Length > 0, null);
             string payload = "空格 & {path} \"引号\""; bool invalidNumberBlocked = false;
             var input = new RuntimeInputWindow(action, context) { ShowActivated = false };

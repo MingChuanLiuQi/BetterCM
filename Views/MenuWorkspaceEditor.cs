@@ -26,13 +26,15 @@ public sealed class MenuWorkspaceEditor : UserControl
             panel.Children.Add(new TextBlock { Text = title, FontSize = 21, Margin = new Thickness(0, 18, 0, 8) });
             panel.Children.Add(new TextBlock { Text = description, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
         }
-        Heading("菜单方案", "方案决定增强菜单中提供哪些动作。工具栏保留；经典模式不受影响。场景规则和程序可用性仍会继续筛选。默认方案提供全部已启用动作。");
+        Heading("菜单方案", "方案决定增强菜单中提供哪些动作。工具栏保留；经典模式不受影响。场景规则和程序可用性仍会继续筛选。默认方案提供全部已启用动作；同深度目录匹配时，列表中靠前的方案优先。");
         System.Windows.Automation.AutomationProperties.SetName(_active, "手动菜单方案"); panel.Children.Add(_active); panel.Children.Add(_automatic);
         var profiles = GridFor(_profiles, [("方案名称", "Title"), ("自动匹配目录", "DirectoryRoot")], 145); panel.Children.Add(profiles);
         var profileButtons = new WrapPanel(); panel.Children.Add(profileButtons);
         Button(profileButtons, "添加方案", () => EditProfile(null));
         Button(profileButtons, "编辑方案", () => { if (profiles.SelectedItem is MenuProfile value) EditProfile(value); });
         Button(profileButtons, "移除方案", () => { if (profiles.SelectedItem is MenuProfile value) { string active = ActiveId; _profiles.Remove(value); RefreshProfiles(active == value.Id ? "" : active); } });
+        Button(profileButtons, "上移方案", () => MoveSelected(profiles, _profiles, -1, true));
+        Button(profileButtons, "下移方案", () => MoveSelected(profiles, _profiles, 1, true));
         Button(profileButtons, "测试最近选区", () =>
         {
             _status.Text = TestRecentSelection();
@@ -44,14 +46,22 @@ public sealed class MenuWorkspaceEditor : UserControl
         Button(favoriteButtons, "添加目录", () => EditFavorite(null));
         Button(favoriteButtons, "编辑目录", () => { if (favorites.SelectedItem is FavoriteDestination value) EditFavorite(value); });
         Button(favoriteButtons, "移除目录", () => { if (favorites.SelectedItem is FavoriteDestination value) _favorites.Remove(value); });
-        Button(favoriteButtons, "上移", () => { if (favorites.SelectedItem is FavoriteDestination value && _favorites.IndexOf(value) > 0) _favorites.Move(_favorites.IndexOf(value), _favorites.IndexOf(value) - 1); });
+        Button(favoriteButtons, "上移", () => MoveSelected(favorites, _favorites, -1));
+        Button(favoriteButtons, "下移", () => MoveSelected(favorites, _favorites, 1));
         _status.Margin = new Thickness(0, 12, 0, 12); panel.Children.Add(_status);
         panel.Children.Add(new TextBlock { Text = "此页修改进入设置草稿，点击底部“保存设置”后生效。动作的目录、名称和数量规则可在“内置动作 → 场景与分组”或自定义动作编辑器中设置。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
         Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
+    private void MoveSelected<T>(DataGrid grid, ObservableCollection<T> values, int direction, bool profiles = false)
+    {
+        if (grid.SelectedItem is not T value) return;
+        int index = values.IndexOf(value), target = index + direction; if (target < 0 || target >= values.Count) return;
+        string active = ActiveId; values.Move(index, target); grid.SelectedItem = value; grid.ScrollIntoView(value);
+        if (profiles) RefreshProfiles(active);
+    }
     private static DataGrid GridFor<T>(ObservableCollection<T> values, (string Title, string Property)[] columns, double height)
     {
-        var grid = new DataGrid { ItemsSource = values, AutoGenerateColumns = false, IsReadOnly = true, Height = height, CanUserAddRows = false, Margin = new Thickness(0, 12, 0, 8) };
+        var grid = new DataGrid { ItemsSource = values, AutoGenerateColumns = false, IsReadOnly = true, CanUserSortColumns = false, Height = height, CanUserAddRows = false, Margin = new Thickness(0, 12, 0, 8) };
         foreach (var column in columns)
         {
             var text = new Style(typeof(TextBlock)); text.Setters.Add(new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis));

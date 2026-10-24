@@ -166,7 +166,7 @@ public sealed class Iteration210Tests : IDisposable
         var incoming = Workspace(); incoming.MenuProfiles[0].ActionIds.Add("missing-action");
         Assert.Equal(1, WorkspaceTransfer.Merge(new(), incoming, new()).UnresolvedReferences);
         string json = WorkspaceTransfer.Serialize(incoming);
-        Assert.Throws<InvalidDataException>(() => WorkspaceTransfer.Deserialize(json.Replace("\"SchemaVersion\": 4", "\"SchemaVersion\": 99", StringComparison.Ordinal)));
+        Assert.Throws<InvalidDataException>(() => WorkspaceTransfer.Deserialize(json.Replace("\"SchemaVersion\": " + AppConfig.CurrentSchemaVersion, "\"SchemaVersion\": 99", StringComparison.Ordinal)));
         Assert.Throws<JsonException>(() => WorkspaceTransfer.Deserialize(json.Replace("\"Format\":", "\"Unknown\": true, \"Format\":", StringComparison.Ordinal)));
     }
     [Fact]
@@ -184,7 +184,7 @@ public sealed class Iteration210Tests : IDisposable
     {
         var old = new AppConfig { SchemaVersion = 3, Theme = "light" };
         var migrated = ConfigJson.Deserialize(ConfigMigrations.Migrate(ConfigJson.Serialize(old)))!;
-        Assert.Equal(4, migrated.SchemaVersion); Assert.Empty(migrated.RenamePresets); Assert.Equal("light", migrated.Theme);
+        Assert.Equal(AppConfig.CurrentSchemaVersion, migrated.SchemaVersion); Assert.Empty(migrated.RenamePresets); Assert.Equal("light", migrated.Theme);
     }
     [Fact]
     public void RuntimeInputExpansionIsSinglePassAndPreservesOneIndependentArgument()

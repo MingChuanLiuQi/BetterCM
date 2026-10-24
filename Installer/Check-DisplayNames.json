@@ -329,5 +329,17 @@
   "Iteration210/RuntimeForm": "运行参数表单阻止越界整数并保留文本和下拉选择",
   "Iteration210/RuntimeLaunch": "真实进程收到的运行参数与表单预览一致且不二次展开",
   "Iteration210/PrepareCancel": "传输准备等待可取消且不会提交原生执行",
-  "Iteration210/CancelBeforeCommit": "真实目标准备后取消不会创建日期目录或传输文件"
+  "Iteration210/CancelBeforeCommit": "真实目标准备后取消不会创建日期目录或传输文件",
+  "Iteration220/ExcludeAllConflicts": "排除全部冲突后空选区拒绝执行且可恢复全选",
+  "Iteration220/FavoriteOrdering": "收藏目录下移保存实际顺序且禁止列排序产生误导",
+  "Iteration220/HistoryOptOut": "关闭历史保留后仍可执行但不新增本机记录",
+  "Iteration220/HistoryPanel": "历史设置页显示本机记录和隐私选项",
+  "Iteration220/HistoryReopenUndo": "关闭原窗口后从历史详情校验并恢复原名",
+  "Iteration220/HistorySaved": "完成的勾选任务保存到历史且排除文件保持原名",
+  "Iteration220/PresetSelection": "保存预设后保持选中刚保存的用户预设",
+  "Iteration220/PresetUpdate": "同名预设更新规则时保持稳定标识与选择",
+  "Iteration220/ProfileOrdering": "方案下移影响同目录自动优先级并保留手动方案",
+  "Iteration220/SelectAll": "全选后重新预览恢复所有项目的有效计划",
+  "Iteration220/SelectionInvalidates": "取消勾选立即禁用执行并保留文件",
+  "Iteration220/SelectionRenumbers": "按勾选项重新编号且排除项仍可重新勾选"
 }

@@ -330,6 +330,18 @@
     "Iteration210/RuntimeForm",
     "Iteration210/RuntimeLaunch",
     "Iteration210/PrepareCancel",
-    "Iteration210/CancelBeforeCommit"
+    "Iteration210/CancelBeforeCommit",
+    "Iteration220/ExcludeAllConflicts",
+    "Iteration220/FavoriteOrdering",
+    "Iteration220/HistoryOptOut",
+    "Iteration220/HistoryPanel",
+    "Iteration220/HistoryReopenUndo",
+    "Iteration220/HistorySaved",
+    "Iteration220/PresetSelection",
+    "Iteration220/PresetUpdate",
+    "Iteration220/ProfileOrdering",
+    "Iteration220/SelectAll",
+    "Iteration220/SelectionInvalidates",
+    "Iteration220/SelectionRenumbers"
   ]
 }

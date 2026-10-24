@@ -24,7 +24,7 @@ internal static class WorkspaceChecks
             rename.Show(); await rename.Dispatcher.InvokeAsync(rename.UpdateLayout, System.Windows.Threading.DispatcherPriority.ContextIdle);
             var prefix = Descendants<TextBox>(rename).Single(x => AutomationProperties.GetName(x) == "前缀"); prefix.Text = "归档-";
             await rename.PreviewAsync();
-            var rows = Descendants<DataGrid>(rename).Single().Items.Cast<RenameRow>().ToArray();
+            var rows = Descendants<DataGrid>(rename).Single().Items.Cast<RenamePreviewRow>().Select(x => x.Plan).ToArray();
             check(new("Workspace/RenamePreview", "批量重命名窗口预览中文和花括号且不改变原文件"), rows.Length == 1 && rows[0].NewName == "归档-报告 {dir} A.txt" && rows[0].Error.Length == 0 && File.Exists(source), null);
             await rename.Dispatcher.InvokeAsync(rename.UpdateLayout, System.Windows.Threading.DispatcherPriority.ContextIdle);
             CustomActionChecks.Capture(rename, Path.Combine(root, "rename-preview.png"));

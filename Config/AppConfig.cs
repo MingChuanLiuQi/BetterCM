@@ -28,7 +28,7 @@ public sealed class CustomActionItem
 }
 public sealed class AppConfig
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string GlobalHotkey { get; set; } = "Alt+X";
     public bool ReplaceExplorerMenu { get; set; } = true;
@@ -37,6 +37,7 @@ public sealed class AppConfig
     public bool IncludeShellActions { get; set; } = true;
     public bool ClassicMenu { get; set; } = true;
     public bool ShowNotifications { get; set; } = true;
+    public bool KeepRenameHistory { get; set; } = true;
     public string Theme { get; set; } = "system";
     public string Material { get; set; } = "mica";
     public bool ShowMoreItems { get; set; } = true;

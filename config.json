@@ -1,5 +1,5 @@
 {
-  "SchemaVersion": 4,
+  "SchemaVersion": 5,
   "GlobalHotkey": "Alt+X",
   "ReplaceExplorerMenu": true,
   "EnableAnimations": true,
@@ -24,6 +24,7 @@
   "IncludeShellActions": true,
   "ClassicMenu": true,
   "ShowNotifications": true,
+  "KeepRenameHistory": true,
   "Actions": [],
   "CustomActions": [],
   "PinnedShellActions": [],
