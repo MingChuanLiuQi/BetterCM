@@ -55,6 +55,11 @@ public static class ConfigMigrations
                     }
                     version = 3;
                     break;
+                case 3:
+                    if (config.CustomActions != null)
+                        foreach (var action in config.CustomActions.Where(x => x != null && x.Parameters?.Count == 0 && x.Arguments?.Contains("{input:", StringComparison.Ordinal) == true)) action.PreserveInputLiterals = true;
+                    version = 4;
+                    break;
                 default: throw new InvalidDataException("缺少配置迁移步骤");
             }
         }

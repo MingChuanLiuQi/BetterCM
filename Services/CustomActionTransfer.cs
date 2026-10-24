@@ -9,7 +9,7 @@ internal sealed record CustomActionMerge(IReadOnlyList<CustomActionItem> Actions
 internal sealed class CustomActionDocument
 {
     [JsonRequired] public string Format { get; set; } = "BetterCM.CustomActions";
-    [JsonRequired] public int Version { get; set; } = 2;
+    [JsonRequired] public int Version { get; set; } = 3;
     [JsonRequired] public List<CustomActionItem> Actions { get; set; } = [];
 }
 internal static class CustomActionTransfer
@@ -35,16 +35,19 @@ internal static class CustomActionTransfer
     {
         if (Encoding.UTF8.GetByteCount(json) > MaximumBytes) throw new InvalidDataException("动作文件不能超过 1 MiB。");
         var document = JsonSerializer.Deserialize<CustomActionDocument>(json, Options) ?? throw new InvalidDataException("动作文件不能为空。");
-        if (document.Format != "BetterCM.CustomActions" || document.Version is not (1 or 2)) throw new InvalidDataException("不支持的自定义动作文件格式或版本。");
+        if (document.Format != "BetterCM.CustomActions" || document.Version is not (1 or 2 or 3)) throw new InvalidDataException("不支持的自定义动作文件格式或版本。");
         if (document.Actions == null || document.Actions.Any(x => x == null)) throw new InvalidDataException("动作列表不能为 null，也不能包含 null。");
+        if (document.Version < 3)
+            foreach (var action in document.Actions.Where(x => x.Parameters?.Count == 0 && x.Arguments?.Contains("{input:", StringComparison.Ordinal) == true)) action.PreserveInputLiterals = true;
         Validate(document.Actions);
         return Copy(document.Actions);
     }
     private static bool SameDefinition(CustomActionItem first, CustomActionItem second)
         => string.Equals(first.Title, second.Title, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(first.Executable, second.Executable, StringComparison.OrdinalIgnoreCase) && first.Arguments == second.Arguments &&
-        first.SelectionMode == second.SelectionMode && first.RunAsAdmin == second.RunAsAdmin && first.UseTargetWorkingDirectory == second.UseTargetWorkingDirectory &&
+        first.SelectionMode == second.SelectionMode && first.RunAsAdmin == second.RunAsAdmin && first.UseTargetWorkingDirectory == second.UseTargetWorkingDirectory && first.PreserveInputLiterals == second.PreserveInputLiterals &&
         first.Group == second.Group && JsonSerializer.Serialize(first.Rule) == JsonSerializer.Serialize(second.Rule) &&
+        JsonSerializer.Serialize(first.Parameters) == JsonSerializer.Serialize(second.Parameters) &&
         new HashSet<string>(first.MatchExtensions.Select(x => x.Trim()), StringComparer.OrdinalIgnoreCase).SetEquals(second.MatchExtensions.Select(x => x.Trim()));
     internal static CustomActionMerge Merge(IEnumerable<CustomActionItem> existing, IEnumerable<CustomActionItem> incoming, CustomActionDuplicatePolicy policy)
     {

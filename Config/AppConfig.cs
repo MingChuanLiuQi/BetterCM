@@ -23,10 +23,12 @@ public sealed class CustomActionItem
     public List<string> MatchExtensions { get; set; } = ["*"];
     public string Group { get; set; } = "";
     public ActionRule Rule { get; set; } = new();
+    public List<RuntimeParameter> Parameters { get; set; } = [];
+    public bool PreserveInputLiterals { get; set; }
 }
 public sealed class AppConfig
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string GlobalHotkey { get; set; } = "Alt+X";
     public bool ReplaceExplorerMenu { get; set; } = true;
@@ -57,6 +59,7 @@ public sealed class AppConfig
     public List<CustomActionItem> CustomActions { get; set; } = [];
     public List<FavoriteDestination> FavoriteDestinations { get; set; } = [];
     public List<MenuProfile> MenuProfiles { get; set; } = [];
+    public List<RenamePreset> RenamePresets { get; set; } = [];
     public string ActiveProfileId { get; set; } = "";
     public bool AutoSelectProfile { get; set; }
     public HashSet<string> PinnedShellActions { get; set; } = [];
@@ -65,9 +68,10 @@ public sealed class AppConfig
     {
         var copy = (AppConfig)MemberwiseClone();
         copy.Actions = Actions.Select(x => new ActionPreference { Id = x.Id, Enabled = x.Enabled, IsPrimary = x.IsPrimary, Order = x.Order, Group = x.Group, Rule = x.Rule.Clone() }).ToList();
-        copy.CustomActions = CustomActions.Select(x => new CustomActionItem { Id = x.Id, Title = x.Title, Executable = x.Executable, Arguments = x.Arguments, RunAsAdmin = x.RunAsAdmin, UseTargetWorkingDirectory = x.UseTargetWorkingDirectory, Enabled = x.Enabled, IsPrimary = x.IsPrimary, SelectionMode = x.SelectionMode, MatchExtensions = [.. x.MatchExtensions], Group = x.Group, Rule = x.Rule.Clone() }).ToList();
+        copy.CustomActions = CustomActions.Select(x => new CustomActionItem { Id = x.Id, Title = x.Title, Executable = x.Executable, Arguments = x.Arguments, RunAsAdmin = x.RunAsAdmin, UseTargetWorkingDirectory = x.UseTargetWorkingDirectory, Enabled = x.Enabled, IsPrimary = x.IsPrimary, SelectionMode = x.SelectionMode, MatchExtensions = [.. x.MatchExtensions], Group = x.Group, Rule = x.Rule.Clone(), Parameters = x.Parameters.Select(p => p.Clone()).ToList(), PreserveInputLiterals = x.PreserveInputLiterals }).ToList();
         copy.FavoriteDestinations = FavoriteDestinations.Select(x => x.Clone()).ToList();
         copy.MenuProfiles = MenuProfiles.Select(x => x.Clone()).ToList();
+        copy.RenamePresets = RenamePresets.Select(x => x.Clone()).ToList();
         copy.PinnedShellActions = new(PinnedShellActions, PinnedShellActions.Comparer);
         copy.HiddenShellActions = new(HiddenShellActions, HiddenShellActions.Comparer);
         return copy;
@@ -231,6 +235,7 @@ public sealed class ConfigStore
         if (config.Actions is null || config.CustomActions is null || config.PinnedShellActions is null || config.HiddenShellActions is null) throw new InvalidDataException("配置列表不能为 null");
         if (config.Actions.Any(x => x is null) || config.CustomActions.Any(x => x is null)) throw new InvalidDataException("动作列表不能包含 null");
         BetterCM.Services.ActionRules.ValidateConfiguration(config);
+        BetterCM.Services.RenamePresets.Validate(config.RenamePresets);
         var customIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var action in config.CustomActions)
         {
@@ -239,6 +244,7 @@ public sealed class ConfigStore
             if (action is null || string.IsNullOrWhiteSpace(action.Title) || string.IsNullOrWhiteSpace(action.Executable)) throw new InvalidDataException("自定义动作需要名称和程序路径");
             if (action.Enabled && (!Path.IsPathFullyQualified(action.Executable) || !BetterCM.Services.ExecutableResolver.IsProgram(action.Executable))) throw new InvalidDataException("自定义动作需要 .exe 或 .com 的完整路径，请重新编辑该动作。");
             if (action.Arguments is null || action.MatchExtensions is null || action.MatchExtensions.Any(x => x is null)) throw new InvalidDataException("动作参数和扩展名列表不能为 null");
+            BetterCM.Services.RuntimeInputs.Validate(action);
             if (action.SelectionMode is not ("single" or "each" or "batch")) throw new InvalidDataException("多选模式应为 single、each 或 batch");
             if (action.SelectionMode == "batch" && !BetterCM.Services.ActionExecutor.ParseArguments(action.Arguments).Contains("{paths}", StringComparer.Ordinal))
                 throw new InvalidDataException("一次传入全部项目模式需要独立的 {paths} 参数，例如 \"{paths}\"");

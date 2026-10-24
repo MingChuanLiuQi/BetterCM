@@ -2,9 +2,13 @@
 
 ## 当前入口
 
-- [2.0.0 迭代说明](releases/2.0.0/ITERATION-2.0.0.md)：场景规则、方案、分组、批量重命名和收藏目录传输。
+- [2.1.0 迭代说明](releases/2.1.0/ITERATION-2.1.0.md)：完整配置备份、重命名预设与排序、运行参数，以及文件操作和路径修正。
 - [当前 QA](../QA.md)：本轮实际执行范围和证据定位。
 - [README](../README.md)、[架构](../ARCHITECTURE.md)、[更新记录](../CHANGELOG.md)、[安全](../SECURITY.md)、[许可证与来源](../THIRD-PARTY-NOTICES.md)。
+
+## 2.0.0 历史记录
+
+- [2.0.0 QA](releases/2.0.0/QA-2.0.0.md) 与 [迭代说明](releases/2.0.0/ITERATION-2.0.0.md)：场景规则、方案、分组、批量重命名和收藏目录传输。
 
 ## 1.10.0 历史记录
 

@@ -320,6 +320,16 @@
     "Workspace/NativeCopy",
     "Workspace/NativeMove",
     "Workspace/GroupedSubmenu",
-    "Workspace/RenameStop"
+    "Workspace/RenameStop",
+    "Iteration210/RecentContext",
+    "Iteration210/BackupReview",
+    "Iteration210/BackupDraft",
+    "Iteration210/BackupConflict",
+    "Iteration210/PresetOptions",
+    "Iteration210/InvalidNamePreview",
+    "Iteration210/RuntimeForm",
+    "Iteration210/RuntimeLaunch",
+    "Iteration210/PrepareCancel",
+    "Iteration210/CancelBeforeCommit"
   ]
 }

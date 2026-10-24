@@ -8,8 +8,8 @@ public static class ActionRules
     public static bool IsWithin(string path, string root)
     {
         if (!Path.IsPathFullyQualified(path) || !Path.IsPathFullyQualified(root)) return false;
-        string parent = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
-        string target = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        string parent = FileSystemPaths.Normalize(root);
+        string target = FileSystemPaths.Normalize(path);
         return target.Equals(parent, StringComparison.OrdinalIgnoreCase) || target.StartsWith(Path.EndsInDirectorySeparator(parent) ? parent : parent + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
     public static string Explain(ActionRule rule, SelectedContext context)
@@ -37,7 +37,7 @@ public static class ActionRules
         {
             var paths = context.TargetPaths.ToArray();
             var automatic = config.MenuProfiles.Where(x => x.DirectoryRoot.Length > 0 && paths.All(p => IsWithin(p, x.DirectoryRoot)))
-                .OrderByDescending(x => Path.TrimEndingDirectorySeparator(Path.GetFullPath(x.DirectoryRoot)).Length).FirstOrDefault();
+                .OrderByDescending(x => FileSystemPaths.Normalize(x.DirectoryRoot).Length).FirstOrDefault();
             if (automatic != null) return automatic;
         }
         return config.MenuProfiles.FirstOrDefault(x => x.Id == config.ActiveProfileId);
@@ -56,8 +56,7 @@ public static class ActionRules
     {
         if (path == null || path.Length == 0 && !optional) throw new InvalidDataException("请选择目标目录");
         if (path.Length == 0) return;
-        if (!Path.IsPathFullyQualified(path) || path.IndexOfAny(['*', '?', '"', '<', '>', '|', '\0']) >= 0) throw new InvalidDataException("目录需要不含通配符的绝对路径");
-        _ = Path.GetFullPath(path);
+        _ = FileSystemPaths.Normalize(path);
     }
     internal static void ValidateConfiguration(AppConfig config)
     {

@@ -47,6 +47,7 @@ public static class SelfTests
             await RequestTimingChecks.RunAsync(Check, fixture);
             await CustomActionChecks.RunAsync(Check, fixture);
             await WorkspaceChecks.RunAsync(Check, fixture);
+            await Iteration210Checks.RunAsync(Check, fixture);
             await ShellOperationChecks.RunAsync(fixture, Check);
             await ShellLaunchChecks.RunAsync(fixture, Check);
             await DeferredMenuChecks.RunAsync(fixture, Check);

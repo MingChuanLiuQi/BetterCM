@@ -493,6 +493,9 @@
       <TabItem Header="场景与整理">
         <ContentControl x:Name="WorkspaceHost" />
       </TabItem>
+      <TabItem Header="备份与迁移">
+        <ContentControl x:Name="WorkspaceBackupHost" />
+      </TabItem>
       <TabItem Header="诊断">
         <Grid Margin="4,0,8,0">
           <Grid.RowDefinitions>

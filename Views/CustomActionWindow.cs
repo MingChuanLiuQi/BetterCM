@@ -19,6 +19,7 @@ public sealed class CustomActionWindow : Window
     private readonly SelectedContext? _recentContext;
     private bool _previewReady;
     private readonly ActionRuleEditor _rules;
+    private readonly RuntimeParameterEditor _parameters;
     public CustomActionItem Result { get; private set; }
     public CustomActionWindow(CustomActionItem original, SelectedContext? recentContext = null)
     {
@@ -87,6 +88,8 @@ public sealed class CustomActionWindow : Window
         Field("菜单中显示的名称", _title); Field("打开程序", executableRow);
         Hint("填写 .exe 或 .com 的完整路径，或 PATH 中的程序名称（保存时固定为完整路径）。VS Code 可填写 Code.exe。");
         Field("启动参数（可选）", _arguments);
+        _parameters = new(Result.Parameters); _parameters.Changed += RefreshPreview;
+        panel.Children.Add(new Expander { Header = "执行前填写的参数", Content = _parameters, Margin = new Thickness(0, 12, 0, 0) });
         Hint("{path} 表示选中项目的路径，{dir} 表示所在文件夹，{name} 表示名称。\n例如：\"{path}\"。路径占位符请保留双引号，避免空格被拆开。");
         Field("适用的文件类型", _extensions);
         Hint("用逗号分隔，例如 .txt, .md。* 表示所有文件，dir 表示文件夹。");
@@ -155,7 +158,9 @@ public sealed class CustomActionWindow : Window
         IsPrimary = _primary.IsChecked == true,
         UseTargetWorkingDirectory = _targetDirectory.IsChecked == true,
         Rule = _rules.ReadRule(),
-        Group = _rules.Group
+        Group = _rules.Group,
+        Parameters = _parameters.Read(),
+        PreserveInputLiterals = Result.PreserveInputLiterals && _parameters.Read().Count == 0
     };
     internal void ApplyTemplate(string id)
     {
@@ -165,6 +170,7 @@ public sealed class CustomActionWindow : Window
         _title.Text = action.Title; _executable.Text = action.Executable; _arguments.Text = action.Arguments;
         _extensions.Text = string.Join(", ", action.MatchExtensions); _mode.SelectedIndex = action.SelectionMode switch { "each" => 1, "batch" => 2, _ => 0 };
         _admin.IsChecked = action.RunAsAdmin; _targetDirectory.IsChecked = action.UseTargetWorkingDirectory;
+        _parameters.Load(action.Parameters);
         _previewReady = true; RefreshPreview();
     }
     private void RefreshPreview()

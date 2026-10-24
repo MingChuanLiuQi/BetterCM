@@ -11,10 +11,11 @@ internal sealed class CustomActionPlan
     private readonly CustomActionItem _action;
     private readonly SelectedItem[] _targets;
     private readonly string[] _paths, _tokens;
+    private readonly IReadOnlyDictionary<string, string> _inputs;
     internal string Executable => _action.Executable;
     internal bool RunAsAdmin => _action.RunAsAdmin;
     internal int Count => _action.SelectionMode == "each" ? _targets.Length : 1;
-    internal CustomActionPlan(CustomActionItem action, SelectedContext context)
+    internal CustomActionPlan(CustomActionItem action, SelectedContext context, IReadOnlyDictionary<string, string>? inputs = null, bool previewInputs = true)
     {
         ConfigStore.Validate(new() { CustomActions = [action] });
         if (!Path.IsPathFullyQualified(action.Executable) || !ExecutableResolver.IsProgram(action.Executable))
@@ -24,6 +25,7 @@ internal sealed class CustomActionPlan
         _targets = context.HasSelection ? context.Items.Select(x => new SelectedItem(x.Path, x.IsDirectory)).ToArray() : [new(context.CurrentDirectory, true)];
         _paths = _targets.Select(x => x.Path).ToArray();
         _tokens = ActionExecutor.ParseArguments(action.Arguments);
+        _inputs = RuntimeInputs.Values(_action, inputs, previewInputs);
     }
     internal CustomActionLaunch Launch(int index)
     {
@@ -31,7 +33,7 @@ internal sealed class CustomActionPlan
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, Count);
         var target = _targets[_action.SelectionMode == "each" ? index : 0];
         string directory = target.IsDirectory ? target.Path : Path.GetDirectoryName(target.Path) ?? "";
-        var arguments = _tokens.SelectMany(token => token == "{paths}" ? _paths : [PathFormatter.Expand(token, target.Path, directory)]).ToArray();
+        var arguments = _tokens.SelectMany(token => token == "{paths}" ? _paths : [RuntimeInputs.Expand(token, target.Path, directory, _inputs)]).ToArray();
         return new(arguments, directory, _action.UseTargetWorkingDirectory ? directory : Path.GetDirectoryName(Executable)!);
     }
     internal string Describe()

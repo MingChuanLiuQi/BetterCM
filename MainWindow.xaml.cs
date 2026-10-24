@@ -42,7 +42,12 @@ public partial class MainWindow : Window
     private bool _validHotkey;
     private bool _customTransferBusy;
     private readonly MenuWorkspaceEditor _workspace = new();
-    public MainWindow(App app) { _app = app; InitializeComponent(); WorkspaceHost.Content = _workspace; SettingsWindowSizing.Attach(this); Title = AppInfo.DisplayName + " · 设置"; ThemeService.Attach(this); BuiltinGrid.ItemsSource = _actions; CustomGrid.ItemsSource = _custom; ShellGrid.ItemsSource = _shell; RefreshSettings(); }
+    public MainWindow(App app) { _app = app; InitializeComponent(); WorkspaceHost.Content = _workspace; WorkspaceBackupHost.Content = new WorkspaceBackupPanel(ReadSettings, () => ConfigJson.Snapshot(_app.Config), ApplyWorkspaceImport); SettingsWindowSizing.Attach(this); Title = AppInfo.DisplayName + " · 设置"; ThemeService.Attach(this); BuiltinGrid.ItemsSource = _actions; CustomGrid.ItemsSource = _custom; ShellGrid.ItemsSource = _shell; RefreshSettings(); }
+    internal void ApplyWorkspaceImport(AppConfig imported, string expectedBaseline)
+    {
+        if (_configurationConflict || _loadedConfig != ConfigJson.Snapshot(_app.Config) || expectedBaseline != ConfigJson.Snapshot(_app.Config)) { NotifyConfigurationChanged(); throw new IOException("已保存配置发生变化，请先撤销冲突或重新加载，再导入并检查差异。"); }
+        LoadSettings(imported.Clone(), StartWithWindows.IsChecked == true); SaveStatus.Text = "备份已加入设置草稿，保存后生效，也可撤销未保存的修改。";
+    }
     public void RefreshSettings()
         => LoadSettings(_app.Config.Clone(), StartupService.Enabled);
     internal bool HasUnsavedChanges
@@ -81,7 +86,7 @@ public partial class MainWindow : Window
             _actions.Add(new() { Id = definition.Id, Title = definition.Title + (definition.Toolbar ? " · 顶部工具栏" : ""), Shortcut = definition.Shortcut, Enabled = pref.Enabled, IsPrimary = definition.Toolbar || pref.IsPrimary, CanPin = !definition.Toolbar, Group = pref.Group, Rule = pref.Rule.Clone() });
         }
         _custom.Clear(); foreach (var custom in config.CustomActions) _custom.Add(custom);
-        _workspace.Load(config, () => _actions.Where(x => x.CanPin).Select(x => (x.Id, x.Title)).Concat(_custom.Select(x => (x.Id, x.Title))).ToArray(), _app.LastContext);
+        _workspace.Load(config, () => _actions.Where(x => x.CanPin).Select(x => (x.Id, x.Title)).Concat(_custom.Select(x => (x.Id, x.Title))).ToArray(), _app.LastContext, () => _app.LastContext);
         _shellEdits.Clear();
         foreach (var key in config.PinnedShellActions.Concat(config.HiddenShellActions).Concat(_app.Config.PinnedShellActions).Concat(_app.Config.HiddenShellActions).Distinct(StringComparer.Ordinal))
             _shellEdits[key] = new() { Key = key, Pinned = config.PinnedShellActions.Contains(key), Hidden = config.HiddenShellActions.Contains(key) };

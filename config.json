@@ -1,5 +1,5 @@
 {
-  "SchemaVersion": 3,
+  "SchemaVersion": 4,
   "GlobalHotkey": "Alt+X",
   "ReplaceExplorerMenu": true,
   "EnableAnimations": true,

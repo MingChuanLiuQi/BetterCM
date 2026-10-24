@@ -16,6 +16,8 @@ public sealed class MenuWorkspaceEditor : UserControl
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap };
     private Func<IReadOnlyList<(string Id, string Title)>> _actions = () => [];
     private SelectedContext? _recent;
+    private Func<SelectedContext?>? _recentProvider;
+    private List<RenamePreset> _renamePresets = [];
     public MenuWorkspaceEditor()
     {
         var panel = new StackPanel { Margin = new Thickness(4, 0, 12, 0) };
@@ -33,9 +35,7 @@ public sealed class MenuWorkspaceEditor : UserControl
         Button(profileButtons, "移除方案", () => { if (profiles.SelectedItem is MenuProfile value) { string active = ActiveId; _profiles.Remove(value); RefreshProfiles(active == value.Id ? "" : active); } });
         Button(profileButtons, "测试最近选区", () =>
         {
-            if (_recent == null) { _status.Text = "请先在 Explorer 中打开一次菜单。"; return; }
-            var config = new AppConfig(); Apply(config); var selected = ActionRules.SelectProfile(config, _recent);
-            _status.Text = selected == null ? "最近选区使用默认方案。动作自身规则仍会继续筛选。" : $"最近选区使用“{selected.Title}”，方案中勾选 {selected.ActionIds.Count} 项。";
+            _status.Text = TestRecentSelection();
         });
         Heading("收藏目录", "增强菜单提供“复制到”和“移动到”子菜单。Windows 负责冲突选择、进度和取消；不占用剪贴板。日期子目录按执行当天创建，例如 2026-10-24。");
         var favorites = GridFor(_favorites, [("名称", "Title"), ("目标目录", "Path")], 180);
@@ -71,17 +71,26 @@ public sealed class MenuWorkspaceEditor : UserControl
         foreach (var value in _profiles) _active.Items.Add(new ComboBoxItem { Content = value.Title, Tag = value.Id });
         _active.SelectedItem = _active.Items.Cast<ComboBoxItem>().FirstOrDefault(x => (string)x.Tag == id) ?? _active.Items[0];
     }
-    public void Load(AppConfig config, Func<IReadOnlyList<(string Id, string Title)>> actions, SelectedContext? recent)
+    internal string TestRecentSelection()
     {
-        _actions = actions; _recent = recent;
+        var recent = _recentProvider == null ? _recent : _recentProvider();
+        if (recent == null) return "请先在 Explorer 中打开一次菜单。";
+        var config = new AppConfig(); Apply(config); var selected = ActionRules.SelectProfile(config, recent);
+        return $"选区 {recent.CapturedAt:HH:mm:ss} · {recent.Items.Count} 项 · {recent.PrimaryName}\n" + (selected == null ? "使用默认方案。动作自身规则仍会继续筛选。" : $"使用“{selected.Title}”，方案中勾选 {selected.ActionIds.Count} 项。");
+    }
+    public void Load(AppConfig config, Func<IReadOnlyList<(string Id, string Title)>> actions, SelectedContext? recent, Func<SelectedContext?>? recentProvider = null)
+    {
+        _actions = actions; _recent = recent; _recentProvider = recentProvider;
         _profiles.Clear(); foreach (var value in config.MenuProfiles) _profiles.Add(value.Clone());
         _favorites.Clear(); foreach (var value in config.FavoriteDestinations) _favorites.Add(value.Clone());
         _automatic.IsChecked = config.AutoSelectProfile; RefreshProfiles(config.ActiveProfileId); _status.Text = "";
+        _renamePresets = config.RenamePresets.Select(x => x.Clone()).ToList();
     }
     public void Apply(AppConfig config)
     {
         config.MenuProfiles = _profiles.Select(x => x.Clone()).ToList(); config.FavoriteDestinations = _favorites.Select(x => x.Clone()).ToList();
         config.ActiveProfileId = ActiveId; config.AutoSelectProfile = _automatic.IsChecked == true;
+        config.RenamePresets = _renamePresets.Select(x => x.Clone()).ToList();
     }
     private void EditProfile(MenuProfile? original)
     {

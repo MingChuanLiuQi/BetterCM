@@ -8,44 +8,52 @@ public static class FavoriteTransfer
     public static string Destination(FavoriteDestination favorite, DateTime date)
     {
         ActionRules.ValidateDirectory(favorite.Path);
-        return favorite.DateSubfolder ? Path.Combine(favorite.Path, date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)) : favorite.Path;
+        string path = FileSystemPaths.Normalize(favorite.Path);
+        return favorite.DateSubfolder ? Path.Combine(path, date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)) : path;
     }
     internal static void ValidateSelection(SelectedContext context, string destination)
     {
         if (!context.HasFileTarget || !context.HasSelection) throw new InvalidOperationException("请先选择文件或文件夹");
         ActionRules.ValidateDirectory(destination);
-        var paths = context.Items.Select(x => Path.TrimEndingDirectorySeparator(Path.GetFullPath(x.Path))).ToArray();
+        var paths = context.Items.Select(x => FileSystemPaths.Normalize(x.Path)).ToArray();
         if (paths.Distinct(StringComparer.OrdinalIgnoreCase).Count() != paths.Length) throw new InvalidOperationException("选区包含重复项目");
         foreach (var item in context.Items)
         {
             if (!Path.IsPathFullyQualified(item.Path)) throw new InvalidOperationException("源项目需要绝对路径");
             if (item.IsDirectory && ActionRules.IsWithin(destination, item.Path)) throw new IOException("不能将文件夹传输到它自身或内部目录");
-            if (string.Equals(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(item.Path)), Path.TrimEndingDirectorySeparator(destination), StringComparison.OrdinalIgnoreCase)) throw new IOException("目标已经位于收藏目录内");
+            if (string.Equals(Path.GetDirectoryName(FileSystemPaths.Normalize(item.Path)), FileSystemPaths.Normalize(destination), StringComparison.OrdinalIgnoreCase)) throw new IOException("目标已经位于收藏目录内");
             if (context.Items.Any(other => other != item && other.IsDirectory && ActionRules.IsWithin(item.Path, other.Path))) throw new IOException("不能同时传输文件夹及其内部项目");
         }
     }
-    public static async Task<string> TransferAsync(SelectedContext context, FavoriteDestination favorite, bool move)
+    public static async Task<string> TransferAsync(SelectedContext context, FavoriteDestination favorite, bool move, CancellationToken cancellation = default, Action? ready = null)
     {
         var snapshot = context with { Items = context.Items.ToArray() };
         var settings = favorite.Clone();
         string destination = Destination(settings, DateTime.Today);
         ValidateSelection(snapshot, destination);
         using var shell = new ShellBridge();
-        var result = await shell.TransferAsync(snapshot, settings, move);
+        var result = await shell.TransferAsync(snapshot, settings, move, cancellation, ready);
         if (result.Aborted) return "Windows 文件操作已停止；已完成的项目保留，请检查目标目录。";
         if (!result.Success) throw new IOException(result.Error);
         return "Windows 文件操作已完成";
     }
-    internal static void RunInHost(string[] paths, string baseDirectory, bool dateSubfolder, bool move, nint owner)
+    internal sealed record PreparedTransfer(string[] Paths, string Destination, bool DateSubfolder, nint Owner);
+    internal static PreparedTransfer Prepare(string[] paths, string baseDirectory, bool dateSubfolder, nint owner)
     {
         if (paths.Length is 0 or > 10000) throw new InvalidDataException("每次最多传输 10000 个选中项目");
+        baseDirectory = FileSystemPaths.Normalize(baseDirectory);
+        paths = paths.Select(FileSystemPaths.Normalize).ToArray();
         var favorite = new FavoriteDestination { Path = baseDirectory, DateSubfolder = dateSubfolder };
         string destination = Destination(favorite, DateTime.Today);
         var context = new SelectedContext { Items = paths.Select(path => new SelectedItem(path, (File.GetAttributes(path) & FileAttributes.Directory) != 0)).ToArray() };
         ValidateSelection(context, destination);
         if (!Directory.Exists(baseDirectory)) throw new DirectoryNotFoundException("收藏目录不可用，请在设置中重新选择：" + baseDirectory);
-        if (dateSubfolder) Directory.CreateDirectory(destination);
-        Transfer(paths, destination, move, owner);
+        return new(paths, destination, dateSubfolder, owner);
+    }
+    internal static void RunInHost(PreparedTransfer prepared, bool move)
+    {
+        if (prepared.DateSubfolder) Directory.CreateDirectory(prepared.Destination);
+        Transfer(prepared.Paths, prepared.Destination, move, prepared.Owner);
     }
     // IFileOperation owns progress, conflict decisions, UAC and user-session undo records.
     internal static void Transfer(IReadOnlyList<string> sources, string destination, bool move, nint owner = 0)

@@ -35,15 +35,27 @@ public sealed class ShellBridge : IDisposable
         using var connection = NewConnection();
         return await connection.SendAsync(new("refresh", context.ShellTargets.ToArray(), (long)context.SourceWindow));
     }
-    public async Task<ShellResponse> TransferAsync(SelectedContext context, Config.FavoriteDestination favorite, bool move)
+    public async Task<ShellResponse> TransferAsync(SelectedContext context, Config.FavoriteDestination favorite, bool move, CancellationToken cancellation = default, Action? ready = null)
     {
         ShellConnection connection;
         lock (_sync)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            connection = NewConnection(); connection.InvocationReserved = true; _invocations.Add(connection);
+            connection = NewConnection(); _invocations.Add(connection);
         }
-        try { return await connection.SendAsync(new(move ? "move-to" : "copy-to", context.TargetPaths.ToArray(), (long)context.SourceWindow, Destination: favorite.Path, DateSubfolder: favorite.DateSubfolder)); }
+        using var cancelPreparation = cancellation.Register(connection.CancelPreparation);
+        try
+        {
+            cancellation.ThrowIfCancellationRequested();
+            var prepared = await connection.SendAsync(new("prepare-transfer", context.TargetPaths.ToArray(), (long)context.SourceWindow, Destination: favorite.Path, DateSubfolder: favorite.DateSubfolder), cancellation);
+            cancellation.ThrowIfCancellationRequested();
+            if (!prepared.Success) return prepared;
+            ready?.Invoke();
+            cancellation.ThrowIfCancellationRequested();
+            connection.InvocationReserved = true;
+            cancellation.ThrowIfCancellationRequested();
+            return await connection.SendAsync(new(move ? "move-to" : "copy-to", Session: prepared.Session));
+        }
         finally { lock (_sync) _invocations.Remove(connection); connection.Dispose(); }
     }
     public async Task<ShellResponse> OpenAsync(SelectedContext ctx, CancellationToken cancellation = default, bool deferSubmenus = false)
@@ -147,7 +159,9 @@ public sealed class ShellBridge : IDisposable
         private bool _resourcesClosed;
         public bool Busy => Volatile.Read(ref _busy) != 0;
         public bool Closed => Volatile.Read(ref _disposed) != 0;
-        public bool InvocationReserved { get; set; }
+        private bool _invocationReserved;
+        public bool InvocationReserved { get { lock (_operationSync) return _invocationReserved; } set { lock (_operationSync) _invocationReserved = value; } }
+        public void CancelPreparation() { lock (_operationSync) { if (!_invokeSent && !_invocationReserved) Dispose(); } }
         public string? Session { get; set; }
         public int? ProcessId { get { lock (_operationSync) return _disposed == 0 ? _process?.Id : null; } }
         public async Task WarmAsync() { try { await EnsureStartedAsync(); } catch { Dispose(); } }
@@ -180,14 +194,14 @@ public sealed class ShellBridge : IDisposable
                 Interlocked.Increment(ref _busy);
             }
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _lifetime.Token);
-            deadline.CancelAfter(request.Kind is "invoke" or "copy-to" or "move-to" ? invokeTimeout : TimeSpan.FromSeconds(6));
+            deadline.CancelAfter(request.Kind is "invoke" or "copy-to" or "move-to" ? invokeTimeout : request.Kind == "prepare-transfer" ? TimeSpan.FromSeconds(10) : TimeSpan.FromSeconds(6));
             try
             {
                 await _gate.WaitAsync(deadline.Token); acquired = true;
                 await EnsureStartedAsync().WaitAsync(deadline.Token);
                 // Startup stays bounded independently. A full enhanced tree may
                 // legitimately need longer than a deferred classic root menu.
-                deadline.CancelAfter(request.Kind is "invoke" or "copy-to" or "move-to" ? invokeTimeout : request.Kind == "open" && !request.DeferSubmenus ? TimeSpan.FromSeconds(20) : TimeSpan.FromSeconds(6));
+                if (request.Kind != "prepare-transfer") deadline.CancelAfter(request.Kind is "invoke" or "copy-to" or "move-to" ? invokeTimeout : request.Kind == "open" && !request.DeferSubmenus ? TimeSpan.FromSeconds(20) : TimeSpan.FromSeconds(6));
                 var id = Guid.NewGuid().ToString("N"); request = request with { RequestId = id };
                 // From this point a verb may be executing: every failure only closes IPC, never kills the host or its children.
                 if (request.Kind is "invoke" or "copy-to" or "move-to")
@@ -206,7 +220,7 @@ public sealed class ShellBridge : IDisposable
                 bool expectedCancellation = cancellation.IsCancellationRequested || _lifetime.IsCancellationRequested;
                 Dispose();
                 if (!expectedCancellation) AppLog.Write("shell-transport", ex);
-                return new(false, request.Kind is "invoke" or "copy-to" or "move-to" ? "未收到系统动作的完成结果，连接已结束；动作可能仍由 Windows 继续执行。请先确认结果后再重试。" : "系统项目读取失败，可重试或使用 Shift+右键：" + ex.Message);
+                return new(false, request.Kind is "invoke" or "copy-to" or "move-to" ? "未收到系统动作的完成结果，连接已结束；动作可能仍由 Windows 继续执行。请先确认结果后再重试。" : request.Kind == "prepare-transfer" ? "目标目录准备超时或连接失败，尚未开始文件传输。" : "系统项目读取失败，可重试或使用 Shift+右键：" + ex.Message);
             }
             finally
             {
@@ -241,6 +255,8 @@ public static class ShellHost
         using var lifetime = test ? null : new ShellHostLifetime();
         bool invoked = false;
         ShellMenuSession? session = null;
+        FavoriteTransfer.PreparedTransfer? preparedTransfer = null;
+        string? transferSession = null;
 #if QA
         string? testSession = null;
 #endif
@@ -260,6 +276,8 @@ public static class ShellHost
 #if QA
                         if (test)
                         {
+                            if (request.Kind == "prepare-transfer") { Thread.Sleep(1000); return new ShellResponse(true, Session: "test-transfer"); }
+                            if (request.Kind is "copy-to" or "move-to") return new ShellResponse(true);
                             if (request.Kind == "startup-flags") return new ShellResponse(true, Error: BackgroundProcess.StartupFlags().ToString());
                             if (request.Kind == "test-log") { for (int i = 0; i < request.Command; i++) AppLog.Write(request.Paths![0], new InvalidOperationException("并发日志夹具 " + i)); return new ShellResponse(true); }
                             if (request.Kind == "open") { if (request.ViewPath == "slow-open") Thread.Sleep(6500); testSession = Guid.NewGuid().ToString("N"); return new ShellResponse(true, Session: testSession, Items: [new(0, "属性", "", "properties", "properties", true), new(40, "Slow test verb", "", "test", "test", true)]); }
@@ -273,10 +291,16 @@ public static class ShellHost
                         else
 #endif
                         {
-                            if (request.Kind is "copy-to" or "move-to")
+                            if (request.Kind == "prepare-transfer")
+                            {
+                                preparedTransfer = FavoriteTransfer.Prepare(request.Paths ?? [], request.Destination, request.DateSubfolder, (nint)request.Owner);
+                                transferSession = Guid.NewGuid().ToString("N"); return new ShellResponse(true, Session: transferSession);
+                            }
+                            if (request.Kind is "copy-to" or "move-to" && preparedTransfer != null && request.Session == transferSession)
                             {
                                 invoked = true;
-                                FavoriteTransfer.RunInHost(request.Paths ?? [], request.Destination, request.DateSubfolder, request.Kind == "move-to", (nint)request.Owner);
+                                var prepared = preparedTransfer; preparedTransfer = null; transferSession = null;
+                                FavoriteTransfer.RunInHost(prepared, request.Kind == "move-to");
                                 return new ShellResponse(true);
                             }
                             if (request.Kind == "refresh")

@@ -284,7 +284,7 @@ public partial class App : Application, IMenuHost
                         {
                             string category = move ? "favorite:move" : "favorite:copy";
                             if (!ActionRules.Allows(profile, category)) continue;
-                            primary.Add(new() { Id = category + ":" + favorite.Id, Title = favorite.Title, Group = move ? "移动到" : "复制到", Detail = favorite.Path + (favorite.DateSubfolder ? " · 当天日期子目录" : ""), Glyph = "\uE8B7", Execute = () => RunAsync(async (_, _) => await FavoriteTransfer.TransferAsync(context, favorite, move)) });
+                            primary.Add(new() { Id = category + ":" + favorite.Id, Title = favorite.Title, Group = move ? "移动到" : "复制到", Detail = favorite.Path + (favorite.DateSubfolder ? " · 当天日期子目录" : ""), Glyph = "\uE8B7", Execute = () => RunFavoriteAsync(context, favorite, move) });
                         }
             }
             async Task<(MenuAction Action, bool Primary)[]> LoadCustomActionsAsync()
@@ -414,7 +414,37 @@ public partial class App : Application, IMenuHost
         }
         await RunAsync(async (token, progress) => await _executor!.ExecuteAsync(id, ctx, token, progress, ShellCommandMap.IsNative(id) && shellLoad != null ? await shellLoad : null), id == "hash", !ShellCommandMap.IsNative(id), "正在计算 SHA256");
     }
-    private async Task RunCustomAsync(CustomActionItem action, SelectedContext ctx) => await RunAsync(async (token, progress) => { await _executor!.ExecuteCustomAsync(action, ctx, token, progress); return null; }, showProgress: action.SelectionMode == "each", operationTitle: "正在启动自定义动作", operationSubtitle: action.Title);
+    private async Task RunCustomAsync(CustomActionItem action, SelectedContext ctx)
+    {
+        try
+        {
+            IReadOnlyDictionary<string, string>? inputs = null;
+            if (action.Parameters.Count > 0)
+            {
+                var dialog = new RuntimeInputWindow(action, ctx);
+                if (dialog.ShowDialog() != true) return;
+                inputs = dialog.Values;
+            }
+            await RunAsync(async (token, progress) => { await _executor!.ExecuteCustomAsync(action, ctx, token, progress, inputs); return null; }, showProgress: action.SelectionMode == "each", operationTitle: "正在启动自定义动作", operationSubtitle: action.Title);
+        }
+        catch (Exception ex) { AppLog.Write("runtime-input", ex); Notify(ex.Message, true); }
+    }
+    private async Task RunFavoriteAsync(SelectedContext context, FavoriteDestination favorite, bool move)
+    {
+        if (_executing) { Notify("已有操作正在执行，请等待或取消"); return; }
+        _executing = true;
+        using var cancellation = new CancellationTokenSource();
+        var operation = new OperationWindow(cancellation, "正在准备文件传输", favorite.Title);
+        try
+        {
+            operation.Report(0, "正在连接并检查目标目录（最多 10 秒），此阶段可取消。"); operation.Show();
+            var result = await FavoriteTransfer.TransferAsync(context, favorite, move, cancellation.Token, () => { operation.SetCancellable(false); operation.Hide(); });
+            Notify(result);
+        }
+        catch (OperationCanceledException) { Notify("准备已取消，尚未开始文件传输。"); }
+        catch (Exception ex) { AppLog.Write("favorite-transfer", ex); Notify(ex.Message, true); }
+        finally { operation.SetCancellable(false); operation.Close(); _executing = false; }
+    }
     private async Task RunShellAsync(string session, int command) => await RunAsync(async (_, _) => { var result = await _shell.InvokeAsync(session, command); if (!result.Success) throw new InvalidOperationException(result.Error); return null; }, exclusive: false);
     private async Task RunAsync(Func<CancellationToken, IProgress<(double, string)>, Task<string?>> action, bool showProgress = false, bool exclusive = true, string operationTitle = "正在执行操作", string? operationSubtitle = null)
     {

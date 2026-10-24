@@ -65,10 +65,10 @@ public sealed class ActionExecutor(ShellBridge shell)
             default: throw new InvalidOperationException("未知动作：" + id);
         }
     }
-    public async Task ExecuteCustomAsync(CustomActionItem action, SelectedContext ctx, CancellationToken cancellation = default, IProgress<(double Value, string Text)>? progress = null)
+    public async Task ExecuteCustomAsync(CustomActionItem action, SelectedContext ctx, CancellationToken cancellation = default, IProgress<(double Value, string Text)>? progress = null, IReadOnlyDictionary<string, string>? inputs = null)
     {
         cancellation.ThrowIfCancellationRequested();
-        var plan = new CustomActionPlan(action, ctx);
+        var plan = new CustomActionPlan(action, ctx, inputs, previewInputs: false);
         int completed = 0;
         using var worker = new StaWorker("BetterCM custom actions");
         for (int index = 0; index < plan.Count; index++)

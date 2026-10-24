@@ -59,7 +59,7 @@ public sealed class ActionRulesTests
     {
         var migrated = ConfigJson.Deserialize(ConfigMigrations.Migrate("""{"SchemaVersion":2,"Theme":"dark","CustomActions":[{"Id":"old","Title":"old","Executable":"C:\\Tools\\tool.exe","IsPrimary":false}]}"""))!;
         ConfigStore.Validate(migrated);
-        Assert.Equal(3, migrated.SchemaVersion); Assert.Equal("dark", migrated.Theme);
+        Assert.Equal(AppConfig.CurrentSchemaVersion, migrated.SchemaVersion); Assert.Equal("dark", migrated.Theme);
         var action = Assert.Single(migrated.CustomActions); Assert.False(action.IsPrimary);
         Assert.Equal("any", action.Rule.Target); Assert.Equal("", action.Group); Assert.Empty(migrated.MenuProfiles); Assert.Empty(migrated.FavoriteDestinations);
     }

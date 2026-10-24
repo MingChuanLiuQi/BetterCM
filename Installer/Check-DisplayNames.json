@@ -319,5 +319,15 @@
   "Workspace/NativeCopy": "独立 Shell 宿主通过 Windows 文件操作复制到日期目录",
   "Workspace/NativeMove": "独立 Shell 宿主通过 Windows 文件操作移动文件",
   "Workspace/GroupedSubmenu": "一级自定义分组实际打开侧边子菜单且保留两个动作",
-  "Workspace/RenameStop": "退出前可取消并等待重命名窗口处理完成且保留原文件"
+  "Workspace/RenameStop": "退出前可取消并等待重命名窗口处理完成且保留原文件",
+  "Iteration210/RecentContext": "最近选区测试读取更新后的上下文且保留草稿",
+  "Iteration210/BackupReview": "工作区恢复预览包含运行参数方案引用和重命名预设",
+  "Iteration210/BackupDraft": "完整恢复只更新设置草稿且可还原",
+  "Iteration210/BackupConflict": "导入确认期间配置变化会拒绝覆盖并保护当前设置",
+  "Iteration210/PresetOptions": "重命名窗口可应用并读取预设的排序编号与清理规则",
+  "Iteration210/InvalidNamePreview": "无效重命名预览显示拟生成的错误名称",
+  "Iteration210/RuntimeForm": "运行参数表单阻止越界整数并保留文本和下拉选择",
+  "Iteration210/RuntimeLaunch": "真实进程收到的运行参数与表单预览一致且不二次展开",
+  "Iteration210/PrepareCancel": "传输准备等待可取消且不会提交原生执行",
+  "Iteration210/CancelBeforeCommit": "真实目标准备后取消不会创建日期目录或传输文件"
 }

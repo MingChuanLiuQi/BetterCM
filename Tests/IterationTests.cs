@@ -30,6 +30,9 @@ public sealed class IterationTests
                 var type when type == typeof(List<CustomActionItem>) => new List<CustomActionItem> { new() },
                 var type when type == typeof(List<FavoriteDestination>) => new List<FavoriteDestination> { new() },
                 var type when type == typeof(List<MenuProfile>) => new List<MenuProfile> { new() },
+                var type when type == typeof(List<RuntimeParameter>) => new List<RuntimeParameter> { new() },
+                var type when type == typeof(List<RenamePreset>) => new List<RenamePreset> { new() },
+                var type when type == typeof(RenameOptions) => new RenameOptions { Prefix = "clone-test", SortOrder = "name", RemoveEnd = 2, Numbered = true },
                 var type when type == typeof(ActionRule) => new ActionRule { Target = "non-default", NamePattern = "test*", MinimumCount = 17 },
                 _ => throw new NotSupportedException("Add a non-default clone fixture for " + property.DeclaringType!.Name + "." + property.Name)
             };
