@@ -30,7 +30,7 @@ internal sealed class CustomActionImportWindow : Window
         _policy.SelectedIndex = 0; choice.Children.Add(_policy); Grid.SetRow(choice, 1); layout.Children.Add(choice);
         Grid.SetRow(_summary, 2); layout.Children.Add(_summary);
         var list = new DataGrid { IsReadOnly = true, AutoGenerateColumns = false, ItemsSource = _incoming, CanUserAddRows = false, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto };
-        foreach (var column in new[] { ("动作名称", "Title"), ("程序", "Executable"), ("参数", "Arguments"), ("多选方式", "SelectionMode"), ("管理员", "RunAsAdmin"), ("目标工作目录", "UseTargetWorkingDirectory"), ("启用", "Enabled") })
+        foreach (var column in new[] { ("动作名称", "Title"), ("程序", "Executable"), ("参数", "Arguments"), ("分组", "Group"), ("场景规则", "Rule"), ("多选方式", "SelectionMode"), ("管理员", "RunAsAdmin"), ("目标工作目录", "UseTargetWorkingDirectory"), ("启用", "Enabled") })
         {
             if (column.Item2 is "RunAsAdmin" or "UseTargetWorkingDirectory" or "Enabled")
             {
@@ -39,14 +39,14 @@ internal sealed class CustomActionImportWindow : Window
             }
             var textStyle = new Style(typeof(TextBlock));
             textStyle.Setters.Add(new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis));
-            textStyle.Setters.Add(new Setter(FrameworkElement.ToolTipProperty, new Binding(column.Item2)));
+            textStyle.Setters.Add(new Setter(FrameworkElement.ToolTipProperty, new Binding(column.Item2) { Converter = column.Item2 == "Rule" ? new RuleText() : null }));
             textStyle.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(4, 0, 4, 0)));
             list.Columns.Add(new DataGridTextColumn
             {
                 Header = column.Item1,
-                Binding = new Binding(column.Item2) { Converter = column.Item2 == "SelectionMode" ? new ModeText() : null },
+                Binding = new Binding(column.Item2) { Converter = column.Item2 == "SelectionMode" ? new ModeText() : column.Item2 == "Rule" ? new RuleText() : null },
                 ElementStyle = textStyle,
-                Width = column.Item2 is "Title" or "Executable" or "Arguments" ? new DataGridLength(1, DataGridLengthUnitType.Star) : DataGridLength.Auto,
+                Width = column.Item2 == "Rule" ? new DataGridLength(240) : column.Item2 is "Title" or "Executable" or "Arguments" ? new DataGridLength(1, DataGridLengthUnitType.Star) : DataGridLength.Auto,
                 MinWidth = 80
             });
         }
@@ -69,6 +69,16 @@ internal sealed class CustomActionImportWindow : Window
         }
         _policy.SelectionChanged += (_, _) => Refresh(); apply.Click += (_, _) => { if (Result != null) DialogResult = true; };
         Content = layout; Refresh();
+    }
+    private sealed class RuleText : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is not ActionRule rule) return "";
+            string target = rule.Target switch { "files" => "文件", "folders" => "文件夹", "background" => "空白处", _ => "所有目标" };
+            return $"{target}；{rule.NamePattern}；{rule.MinimumCount}–{(rule.MaximumCount == 0 ? "不限" : rule.MaximumCount.ToString(culture))} 项；{(rule.DirectoryRoot.Length == 0 ? "全部目录" : rule.DirectoryRoot)}";
+        }
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
     }
     private sealed class ModeText : IValueConverter
     {

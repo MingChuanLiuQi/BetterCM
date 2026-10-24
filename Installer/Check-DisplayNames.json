@@ -307,5 +307,17 @@
   "CustomAction/Launch/single/False": "真实自定义启动与预览计划一致：single/False",
   "CustomAction/Launch/each/True": "真实自定义启动与预览计划一致：each/True",
   "CustomAction/Launch/batch/False": "真实自定义启动与预览计划一致：batch/False",
-  "CustomAction/Launch/batch/True": "真实自定义启动与预览计划一致：batch/True"
+  "CustomAction/Launch/batch/True": "真实自定义启动与预览计划一致：batch/True",
+  "Workspace/RenamePreview": "批量重命名窗口预览中文和花括号且不改变原文件",
+  "Workspace/RenameExecute": "批量重命名窗口实际执行并保留文件内容",
+  "Workspace/RenameUndo": "批量重命名窗口可撤销本次操作",
+  "Workspace/SettingsDraft": "菜单方案和收藏目录进入草稿且不改动已保存配置",
+  "Workspace/SettingsIsolation": "菜单方案和收藏目录读取为独立副本",
+  "Workspace/SettingsRestore": "撤销设置还原菜单方案和收藏目录",
+  "Workspace/RenameSmallWorkArea": "批量重命名窗口在小工作区保留可达的操作按钮",
+  "Workspace/RuleEditor": "场景规则编辑器读取类型目录和分组并匹配最近选区",
+  "Workspace/NativeCopy": "独立 Shell 宿主通过 Windows 文件操作复制到日期目录",
+  "Workspace/NativeMove": "独立 Shell 宿主通过 Windows 文件操作移动文件",
+  "Workspace/GroupedSubmenu": "一级自定义分组实际打开侧边子菜单且保留两个动作",
+  "Workspace/RenameStop": "退出前可取消并等待重命名窗口处理完成且保留原文件"
 }

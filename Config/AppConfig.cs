@@ -6,6 +6,8 @@ public sealed class ActionPreference
     public bool Enabled { get; set; } = true;
     public bool IsPrimary { get; set; }
     public int Order { get; set; }
+    public string Group { get; set; } = "";
+    public ActionRule Rule { get; set; } = new();
 }
 public sealed class CustomActionItem
 {
@@ -19,10 +21,12 @@ public sealed class CustomActionItem
     public bool IsPrimary { get; set; } = true;
     public string SelectionMode { get; set; } = "single";
     public List<string> MatchExtensions { get; set; } = ["*"];
+    public string Group { get; set; } = "";
+    public ActionRule Rule { get; set; } = new();
 }
 public sealed class AppConfig
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string GlobalHotkey { get; set; } = "Alt+X";
     public bool ReplaceExplorerMenu { get; set; } = true;
@@ -51,13 +55,19 @@ public sealed class AppConfig
     public int GroupExpansionMs { get; set; } = 180;
     public List<ActionPreference> Actions { get; set; } = [];
     public List<CustomActionItem> CustomActions { get; set; } = [];
+    public List<FavoriteDestination> FavoriteDestinations { get; set; } = [];
+    public List<MenuProfile> MenuProfiles { get; set; } = [];
+    public string ActiveProfileId { get; set; } = "";
+    public bool AutoSelectProfile { get; set; }
     public HashSet<string> PinnedShellActions { get; set; } = [];
     public HashSet<string> HiddenShellActions { get; set; } = [];
     public AppConfig Clone()
     {
         var copy = (AppConfig)MemberwiseClone();
-        copy.Actions = Actions.Select(x => new ActionPreference { Id = x.Id, Enabled = x.Enabled, IsPrimary = x.IsPrimary, Order = x.Order }).ToList();
-        copy.CustomActions = CustomActions.Select(x => new CustomActionItem { Id = x.Id, Title = x.Title, Executable = x.Executable, Arguments = x.Arguments, RunAsAdmin = x.RunAsAdmin, UseTargetWorkingDirectory = x.UseTargetWorkingDirectory, Enabled = x.Enabled, IsPrimary = x.IsPrimary, SelectionMode = x.SelectionMode, MatchExtensions = [.. x.MatchExtensions] }).ToList();
+        copy.Actions = Actions.Select(x => new ActionPreference { Id = x.Id, Enabled = x.Enabled, IsPrimary = x.IsPrimary, Order = x.Order, Group = x.Group, Rule = x.Rule.Clone() }).ToList();
+        copy.CustomActions = CustomActions.Select(x => new CustomActionItem { Id = x.Id, Title = x.Title, Executable = x.Executable, Arguments = x.Arguments, RunAsAdmin = x.RunAsAdmin, UseTargetWorkingDirectory = x.UseTargetWorkingDirectory, Enabled = x.Enabled, IsPrimary = x.IsPrimary, SelectionMode = x.SelectionMode, MatchExtensions = [.. x.MatchExtensions], Group = x.Group, Rule = x.Rule.Clone() }).ToList();
+        copy.FavoriteDestinations = FavoriteDestinations.Select(x => x.Clone()).ToList();
+        copy.MenuProfiles = MenuProfiles.Select(x => x.Clone()).ToList();
         copy.PinnedShellActions = new(PinnedShellActions, PinnedShellActions.Comparer);
         copy.HiddenShellActions = new(HiddenShellActions, HiddenShellActions.Comparer);
         return copy;
@@ -220,11 +230,12 @@ public sealed class ConfigStore
         if (config.MoreExpansionMs is < 60 or > 400 || config.GroupExpansionMs is < 60 or > 400) throw new InvalidDataException("展开动画时长应为 60–400 毫秒");
         if (config.Actions is null || config.CustomActions is null || config.PinnedShellActions is null || config.HiddenShellActions is null) throw new InvalidDataException("配置列表不能为 null");
         if (config.Actions.Any(x => x is null) || config.CustomActions.Any(x => x is null)) throw new InvalidDataException("动作列表不能包含 null");
+        BetterCM.Services.ActionRules.ValidateConfiguration(config);
         var customIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var action in config.CustomActions)
         {
             if (string.IsNullOrWhiteSpace(action.Id) || !customIds.Add(action.Id)) throw new InvalidDataException("自定义动作 ID 不能为空或重复");
-            if (BetterCM.Models.ActionCatalog.ById.ContainsKey(action.Id) || action.Id.StartsWith("shell:", StringComparison.Ordinal) || action.Id.StartsWith("native:", StringComparison.Ordinal)) throw new InvalidDataException("自定义动作 ID 不能与内置或系统动作冲突");
+            if (BetterCM.Models.ActionCatalog.ById.ContainsKey(action.Id) || action.Id.StartsWith("shell:", StringComparison.Ordinal) || action.Id.StartsWith("native:", StringComparison.Ordinal) || action.Id.StartsWith("favorite:", StringComparison.Ordinal)) throw new InvalidDataException("自定义动作 ID 不能与内置或系统动作冲突");
             if (action is null || string.IsNullOrWhiteSpace(action.Title) || string.IsNullOrWhiteSpace(action.Executable)) throw new InvalidDataException("自定义动作需要名称和程序路径");
             if (action.Enabled && (!Path.IsPathFullyQualified(action.Executable) || !BetterCM.Services.ExecutableResolver.IsProgram(action.Executable))) throw new InvalidDataException("自定义动作需要 .exe 或 .com 的完整路径，请重新编辑该动作。");
             if (action.Arguments is null || action.MatchExtensions is null || action.MatchExtensions.Any(x => x is null)) throw new InvalidDataException("动作参数和扩展名列表不能为 null");

@@ -58,7 +58,7 @@ public sealed class CustomActionTransferTests : IDisposable
     [InlineData("null")]
     [InlineData("{}")]
     [InlineData("{\"Actions\":[]}")]
-    [InlineData("{\"Format\":\"BetterCM.CustomActions\",\"Version\":2,\"Actions\":[]}")]
+    [InlineData("{\"Format\":\"BetterCM.CustomActions\",\"Version\":99,\"Actions\":[]}")]
     [InlineData("{\"Format\":\"Other\",\"Version\":1,\"Actions\":[]}")]
     [InlineData("{\"Format\":\"BetterCM.CustomActions\",\"Version\":1,\"Actions\":null}")]
     [InlineData("{\"Format\":\"BetterCM.CustomActions\",\"Version\":1,\"Actions\":[null]}")]

@@ -7,6 +7,7 @@ public sealed record ActionDefinition(string Id, string Title, string Glyph, str
     {
         "content" or "notepad" => ctx.IsText,
         "hash" => ctx.IsSingleItem && !ctx.IsDirectory,
+        "batch-rename" => ctx.HasSelection && ctx.HasFileTarget,
         "wallpaper" => ctx.IsWallpaper,
         "admin" => ctx.IsExecutable,
         "wsl" => ctx.HasTarget && ctx.TargetPaths.All(PathFormatter.CanConvertToWsl),
@@ -22,6 +23,7 @@ public static class ActionCatalog
         new("copy", "复制", "\uE8C8", "Ctrl+C", true, true),
         new("paste", "粘贴", "\uE77F", "Ctrl+V", true, true),
         new("rename", "重命名", "\uE8AC", "F2", true),
+        new("batch-rename", "批量重命名…", "\uE8AC", "", false),
         new("delete", "删除", "\uE74D", "Delete", false),
         new("path", "复制完整路径", "\uE71B", "P", true, true),
         new("name", "复制文件名", "\uE8D2", "", true, true),
@@ -51,7 +53,7 @@ public static class ActionCatalog
     }
     public static bool Matches(CustomActionItem action, SelectedContext ctx)
     {
-        if (!action.Enabled || !ctx.HasFileTarget || (ctx.Items.Count > 1 && action.SelectionMode == "single")) return false;
+        if (!action.Enabled || !ctx.HasFileTarget || (ctx.Items.Count > 1 && action.SelectionMode == "single") || !Services.ActionRules.Matches(action.Rule, ctx)) return false;
         var extensions = action.MatchExtensions.Select(x => x.Trim().ToLowerInvariant()).ToHashSet();
         return extensions.Count == 0 || extensions.Contains("*") || (ctx.HasSelection ? ctx.Items.All(x => extensions.Contains(x.Extension)) : extensions.Contains("dir"));
     }

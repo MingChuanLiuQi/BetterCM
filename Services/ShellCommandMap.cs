@@ -18,7 +18,7 @@ public static class ShellCommandMap
             Enabled = command.Enabled,
             ShellKey = command.ShellKey,
             Verb = command.Verb,
-            Group = command.Group,
+            Group = presentation.Group.Length > 0 ? presentation.Group : command.Group,
             Detail = command.Detail,
             Execute = command.Execute
         };

@@ -20,6 +20,7 @@ public partial class App : Application, IMenuHost
     private EventWaitHandle? _wake, _exitSignal;
     private RegisteredWaitHandle? _wakeWait, _exitWait;
     private Forms.NotifyIcon? _tray;
+    private BatchRenameWindow? _renameWindow;
     private readonly ConfigStore _store = new();
     private readonly ExplorerContextService _contexts = new();
     private readonly ShellBridge _shell = new();
@@ -125,6 +126,24 @@ public partial class App : Application, IMenuHost
         using var icon = Assembly.GetExecutingAssembly().GetManifestResourceStream("BetterCM.Assets.BetterCM.ico");
         _tray = new Forms.NotifyIcon { Icon = icon == null ? System.Drawing.SystemIcons.Application : new System.Drawing.Icon(icon), Text = AppInfo.DisplayName + " · 右键菜单", Visible = true };
         var menu = new Forms.ContextMenuStrip();
+        var profiles = new Forms.ToolStripMenuItem("菜单方案");
+        menu.Items.Add(profiles);
+        menu.Opening += (_, _) => Dispatcher.Invoke(() =>
+        {
+            foreach (var item in profiles.DropDownItems.Cast<Forms.ToolStripItem>().ToArray()) item.Dispose();
+            profiles.DropDownItems.Clear();
+            var automatic = new Forms.ToolStripMenuItem("按目录自动选择") { Checked = Config.AutoSelectProfile };
+            automatic.Click += (_, _) => { var next = Config.Clone(); next.AutoSelectProfile = !next.AutoSelectProfile; var error = SaveSettings(next, StartupService.Enabled); if (error != null) Notify(error, true); };
+            profiles.DropDownItems.Add(automatic); profiles.DropDownItems.Add(new Forms.ToolStripSeparator());
+            void AddProfile(string id, string title)
+            {
+                var item = new Forms.ToolStripMenuItem(title) { Checked = !Config.AutoSelectProfile && Config.ActiveProfileId == id };
+                item.Click += (_, _) => { var next = Config.Clone(); next.ActiveProfileId = id; next.AutoSelectProfile = false; var error = SaveSettings(next, StartupService.Enabled); if (error != null) Notify(error, true); };
+                profiles.DropDownItems.Add(item);
+            }
+            AddProfile("", "默认（全部已启用动作）");
+            foreach (var profile in Config.MenuProfiles) AddProfile(profile.Id, profile.Title);
+        });
         menu.Items.Add("设置与一级菜单管理", null, (_, _) => Dispatcher.Invoke(ShowSettings));
         menu.Items.Add("预览菜单", null, (_, _) => Dispatcher.Invoke(Preview));
         menu.Items.Add("暂停 / 恢复右键接管", null, (_, _) => Dispatcher.Invoke(() => { var next = Config.Clone(); next.ReplaceExplorerMenu = _interceptionPaused || !next.ReplaceExplorerMenu; var error = SaveSettings(next, StartupService.Enabled); if (error != null) Notify(error, true); else Notify(_input?.InterceptionActive == true ? "已恢复右键接管" : next.ReplaceExplorerMenu ? "右键接管未能恢复，请查看设置中的输入状态。" : "已暂停右键接管"); }));
@@ -235,6 +254,7 @@ public partial class App : Application, IMenuHost
     {
         if (_menu == null) return;
         var config = (options ?? Config).Clone();
+        var profile = ActionRules.SelectProfile(config, context);
         var toolbar = new List<MenuAction>(); var primary = new List<MenuAction>(); var more = new List<MenuAction>();
         Task<ShellResponse>? shellLoad = null;
         int request = ++_menuRequest;
@@ -254,13 +274,21 @@ public partial class App : Application, IMenuHost
             {
                 foreach (var (definition, pref) in ActionCatalog.Ordered(config))
                 {
-                    if (!pref.Enabled || !definition.Supports(context)) continue;
-                    var action = new MenuAction { Id = definition.Id, Title = definition.Title, Glyph = definition.Glyph, Shortcut = definition.Shortcut, Enabled = !ShellCommandMap.IsNative(definition.Id), Execute = () => RunActionAsync(definition.Id, context, shellLoad) };
+                    if (!pref.Enabled || !definition.Supports(context) || !ActionRules.Matches(pref.Rule, context) || !definition.Toolbar && !ActionRules.Allows(profile, definition.Id)) continue;
+                    var action = new MenuAction { Id = definition.Id, Title = definition.Title, Glyph = definition.Glyph, Shortcut = definition.Shortcut, Group = definition.Toolbar ? "" : pref.Group, Enabled = !ShellCommandMap.IsNative(definition.Id), Execute = () => RunActionAsync(definition.Id, context, shellLoad) };
                     (definition.Toolbar ? toolbar : pref.IsPrimary ? primary : more).Add(action);
                 }
+                if (context.HasSelection && context.HasFileTarget)
+                    foreach (var favorite in config.FavoriteDestinations)
+                        foreach (bool move in new[] { false, true })
+                        {
+                            string category = move ? "favorite:move" : "favorite:copy";
+                            if (!ActionRules.Allows(profile, category)) continue;
+                            primary.Add(new() { Id = category + ":" + favorite.Id, Title = favorite.Title, Group = move ? "移动到" : "复制到", Detail = favorite.Path + (favorite.DateSubfolder ? " · 当天日期子目录" : ""), Glyph = "\uE8B7", Execute = () => RunAsync(async (_, _) => await FavoriteTransfer.TransferAsync(context, favorite, move)) });
+                        }
             }
             async Task<(MenuAction Action, bool Primary)[]> LoadCustomActionsAsync()
-                => await Task.WhenAll(config.CustomActions.Where(a => ActionCatalog.Matches(a, context)).Select(async custom => (await CustomActionPresentation.CreateAsync(custom, () => RunCustomAsync(custom, context), cancellation), custom.IsPrimary)));
+                => await Task.WhenAll(config.CustomActions.Where(a => ActionCatalog.Matches(a, context) && ActionRules.Allows(profile, a.Id)).Select(async custom => (await CustomActionPresentation.CreateAsync(custom, () => RunCustomAsync(custom, context), cancellation), custom.IsPrimary)));
             var customLoad = config.ClassicMenu ? null : LoadCustomActionsAsync();
             if (!config.ClassicMenu) BuildEnhancedActions();
             // Read native capabilities before the first frame. Replacing disabled placeholders
@@ -377,7 +405,15 @@ public partial class App : Application, IMenuHost
         catch (Exception ex) { AppLog.Write("qa-observation", ex); }
 #endif
     }
-    private async Task RunActionAsync(string id, SelectedContext ctx, Task<ShellResponse>? shellLoad = null) => await RunAsync(async (token, progress) => await _executor!.ExecuteAsync(id, ctx, token, progress, ShellCommandMap.IsNative(id) && shellLoad != null ? await shellLoad : null), id == "hash", !ShellCommandMap.IsNative(id), "正在计算 SHA256");
+    private async Task RunActionAsync(string id, SelectedContext ctx, Task<ShellResponse>? shellLoad = null)
+    {
+        if (id == "batch-rename")
+        {
+            if (_renameWindow != null) { _renameWindow.Activate(); Notify("请先完成或关闭当前批量重命名窗口，再处理另一组选区。"); return; }
+            _renameWindow = new(ctx); _renameWindow.Closed += (_, _) => _renameWindow = null; _renameWindow.Show(); return;
+        }
+        await RunAsync(async (token, progress) => await _executor!.ExecuteAsync(id, ctx, token, progress, ShellCommandMap.IsNative(id) && shellLoad != null ? await shellLoad : null), id == "hash", !ShellCommandMap.IsNative(id), "正在计算 SHA256");
+    }
     private async Task RunCustomAsync(CustomActionItem action, SelectedContext ctx) => await RunAsync(async (token, progress) => { await _executor!.ExecuteCustomAsync(action, ctx, token, progress); return null; }, showProgress: action.SelectionMode == "each", operationTitle: "正在启动自定义动作", operationSubtitle: action.Title);
     private async Task RunShellAsync(string session, int command) => await RunAsync(async (_, _) => { var result = await _shell.InvokeAsync(session, command); if (!result.Success) throw new InvalidOperationException(result.Error); return null; }, exclusive: false);
     private async Task RunAsync(Func<CancellationToken, IProgress<(double, string)>, Task<string?>> action, bool showProgress = false, bool exclusive = true, string operationTitle = "正在执行操作", string? operationSubtitle = null)
@@ -470,7 +506,20 @@ public partial class App : Application, IMenuHost
     {
         if (error || Config.ShowNotifications) _tray?.ShowBalloonTip(4000, error ? "BetterCM · 操作未完成" : "BetterCM", text, error ? Forms.ToolTipIcon.Warning : Forms.ToolTipIcon.Info);
     }
-    public void ExitApplication() { if (IsExiting) return; IsExiting = true; Shutdown(); }
+    public async void ExitApplication()
+    {
+        if (IsExiting) return;
+        IsExiting = true;
+        try
+        {
+            if (_renameWindow is { } rename && !await rename.StopAsync())
+            {
+                IsExiting = false; rename.Activate(); Notify("重命名处理遇到错误，请查看窗口中的结果或保留位置后再退出。", true); return;
+            }
+            Shutdown();
+        }
+        catch (Exception ex) { IsExiting = false; AppLog.Write("exit-rename", ex); Notify("暂时无法完成重命名收尾，请检查重命名窗口后重试退出。", true); }
+    }
     protected override void OnExit(ExitEventArgs e)
     {
         FinishRequestTiming(_activeRequestTiming, "Exiting");

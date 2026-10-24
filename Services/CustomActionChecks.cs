@@ -95,7 +95,7 @@ internal static class CustomActionChecks
         }
         finally { settings.Close(); editor.Close(); }
     }
-    private static void Capture(Window window, string destination)
+    internal static void Capture(Window window, string destination)
     {
         int width = (int)Math.Ceiling(window.ActualWidth), height = (int)Math.Ceiling(window.ActualHeight);
         var visual = new DrawingVisual();

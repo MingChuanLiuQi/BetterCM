@@ -308,6 +308,18 @@
     "CustomAction/Launch/single/False",
     "CustomAction/Launch/each/True",
     "CustomAction/Launch/batch/False",
-    "CustomAction/Launch/batch/True"
+    "CustomAction/Launch/batch/True",
+    "Workspace/RenamePreview",
+    "Workspace/RenameExecute",
+    "Workspace/RenameUndo",
+    "Workspace/SettingsDraft",
+    "Workspace/SettingsIsolation",
+    "Workspace/SettingsRestore",
+    "Workspace/RenameSmallWorkArea",
+    "Workspace/RuleEditor",
+    "Workspace/NativeCopy",
+    "Workspace/NativeMove",
+    "Workspace/GroupedSubmenu",
+    "Workspace/RenameStop"
   ]
 }

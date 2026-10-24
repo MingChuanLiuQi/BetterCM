@@ -309,6 +309,7 @@
             <StackPanel x:Name="BuiltinCommands" Orientation="Horizontal">
               <Button Content="上移" Click="MoveUp_Click" Margin="0,0,8,0" />
               <Button Content="下移" Click="MoveDown_Click" />
+              <Button Content="场景与分组" Click="EditBuiltinRule_Click" Margin="8,0,0,0" />
               <Button Content="预览菜单" Click="Preview_Click" Margin="14,0,0,0" />
             </StackPanel>
             <TextBlock Text="“直接显示”的动作放在第一层，其余动作可收进“显示更多项目”。工具栏动作始终在菜单顶部。" Style="{StaticResource SettingsHint}" />
@@ -488,6 +489,9 @@
           </Border>
           <TextBlock Grid.Row="3" Text="列表随右键目标变化。“直接显示”放在菜单第一层；“隐藏”只影响 BetterCM，不会卸载对应程序。" Style="{StaticResource SettingsHint}" Margin="0,14,0,0" />
         </Grid>
+      </TabItem>
+      <TabItem Header="场景与整理">
+        <ContentControl x:Name="WorkspaceHost" />
       </TabItem>
       <TabItem Header="诊断">
         <Grid Margin="4,0,8,0">

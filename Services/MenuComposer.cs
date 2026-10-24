@@ -56,7 +56,17 @@ public static partial class MenuComposer
                 .Select(a => Leaf(a, search: true)));
             return rows;
         }
-        rows.AddRange(primary.Concat(pinned).Select(a => Leaf(a)));
+        var primaryGroups = new Dictionary<string, MenuEntry>(StringComparer.Ordinal);
+        foreach (var action in primary.Concat(pinned))
+        {
+            if (action.ShellKey != null && !ActionCatalog.ById.ContainsKey(action.Id) || action.Group.Length == 0) { rows.Add(Leaf(action)); continue; }
+            if (!primaryGroups.TryGetValue(action.Group, out var group))
+            {
+                group = new() { Id = "custom-group:" + action.Group, Title = action.Group, Glyph = "\uE8B7", IsGroup = true, Origin = "自定义" };
+                primaryGroups.Add(action.Group, group); rows.Add(group);
+            }
+            group.Children = [.. group.Children, Leaf(action)];
+        }
         if (!expanded) return rows;
         var roots = new Group("", "");
         void Add(MenuAction action, IEnumerable<string> path)
@@ -72,7 +82,7 @@ public static partial class MenuComposer
             }
             group.Children.Add(action);
         }
-        foreach (var a in more) Add(a, a.Id is "slash" or "wsl" ? ["复制其他格式路径"] : []);
+        foreach (var a in more) Add(a, a.Group.Length > 0 ? [a.Group] : a.Id is "slash" or "wsl" ? ["复制其他格式路径"] : []);
         foreach (var a in extra)
         {
             var path = a.Group.Split(" · ", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();

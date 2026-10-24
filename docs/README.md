@@ -2,9 +2,13 @@
 
 ## 当前入口
 
-- [1.10.0 迭代说明](releases/1.10.0/ITERATION-1.10.0.md)：自定义动作启动预览、模板和导入导出。
+- [2.0.0 迭代说明](releases/2.0.0/ITERATION-2.0.0.md)：场景规则、方案、分组、批量重命名和收藏目录传输。
 - [当前 QA](../QA.md)：本轮实际执行范围和证据定位。
 - [README](../README.md)、[架构](../ARCHITECTURE.md)、[更新记录](../CHANGELOG.md)、[安全](../SECURITY.md)、[许可证与来源](../THIRD-PARTY-NOTICES.md)。
+
+## 1.10.0 历史记录
+
+- [1.10.0 QA](releases/1.10.0/QA-1.10.0.md) 与 [迭代说明](releases/1.10.0/ITERATION-1.10.0.md)：自定义动作启动预览、模板和导入导出。
 
 ## 1.9.1 历史记录
 

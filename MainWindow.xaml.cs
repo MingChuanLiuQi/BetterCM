@@ -17,6 +17,8 @@ public sealed class ActionRow
     public bool Enabled { get; set; }
     public bool IsPrimary { get; set; }
     public bool CanPin { get; init; }
+    public string Group { get; set; } = "";
+    public ActionRule Rule { get; set; } = new();
 }
 public sealed class ShellRow
 {
@@ -39,7 +41,8 @@ public partial class MainWindow : Window
     private bool _configurationConflict;
     private bool _validHotkey;
     private bool _customTransferBusy;
-    public MainWindow(App app) { _app = app; InitializeComponent(); SettingsWindowSizing.Attach(this); Title = AppInfo.DisplayName + " · 设置"; ThemeService.Attach(this); BuiltinGrid.ItemsSource = _actions; CustomGrid.ItemsSource = _custom; ShellGrid.ItemsSource = _shell; RefreshSettings(); }
+    private readonly MenuWorkspaceEditor _workspace = new();
+    public MainWindow(App app) { _app = app; InitializeComponent(); WorkspaceHost.Content = _workspace; SettingsWindowSizing.Attach(this); Title = AppInfo.DisplayName + " · 设置"; ThemeService.Attach(this); BuiltinGrid.ItemsSource = _actions; CustomGrid.ItemsSource = _custom; ShellGrid.ItemsSource = _shell; RefreshSettings(); }
     public void RefreshSettings()
         => LoadSettings(_app.Config.Clone(), StartupService.Enabled);
     internal bool HasUnsavedChanges
@@ -75,9 +78,10 @@ public partial class MainWindow : Window
         _actions.Clear();
         foreach (var (definition, pref) in ActionCatalog.Ordered(config))
         {
-            _actions.Add(new() { Id = definition.Id, Title = definition.Title + (definition.Toolbar ? " · 顶部工具栏" : ""), Shortcut = definition.Shortcut, Enabled = pref.Enabled, IsPrimary = definition.Toolbar || pref.IsPrimary, CanPin = !definition.Toolbar });
+            _actions.Add(new() { Id = definition.Id, Title = definition.Title + (definition.Toolbar ? " · 顶部工具栏" : ""), Shortcut = definition.Shortcut, Enabled = pref.Enabled, IsPrimary = definition.Toolbar || pref.IsPrimary, CanPin = !definition.Toolbar, Group = pref.Group, Rule = pref.Rule.Clone() });
         }
         _custom.Clear(); foreach (var custom in config.CustomActions) _custom.Add(custom);
+        _workspace.Load(config, () => _actions.Where(x => x.CanPin).Select(x => (x.Id, x.Title)).Concat(_custom.Select(x => (x.Id, x.Title))).ToArray(), _app.LastContext);
         _shellEdits.Clear();
         foreach (var key in config.PinnedShellActions.Concat(config.HiddenShellActions).Concat(_app.Config.PinnedShellActions).Concat(_app.Config.HiddenShellActions).Distinct(StringComparer.Ordinal))
             _shellEdits[key] = new() { Key = key, Pinned = config.PinnedShellActions.Contains(key), Hidden = config.HiddenShellActions.Contains(key) };
@@ -124,8 +128,9 @@ public partial class MainWindow : Window
         config.EnableExpansionAnimations = ExpansionAnimations.IsChecked == true;
         config.MoreExpansionAnimation = Choice(MoreExpansionStyle); config.GroupExpansionAnimation = Choice(GroupExpansionStyle);
         config.MoreExpansionMs = (int)Math.Round(MoreExpansionDuration.Value); config.GroupExpansionMs = (int)Math.Round(GroupExpansionDuration.Value);
-        config.Actions = _actions.Select((x, i) => new ActionPreference { Id = x.Id, Enabled = x.Enabled, IsPrimary = x.IsPrimary, Order = i }).ToList();
+        config.Actions = _actions.Select((x, i) => new ActionPreference { Id = x.Id, Enabled = x.Enabled, IsPrimary = x.IsPrimary, Order = i, Group = x.Group, Rule = x.Rule.Clone() }).ToList();
         config.CustomActions = _custom.ToList();
+        _workspace.Apply(config);
         foreach (var row in _shellEdits.Values) { if (row.Pinned) config.PinnedShellActions.Add(row.Key); else config.PinnedShellActions.Remove(row.Key); if (row.Hidden) config.HiddenShellActions.Add(row.Key); else config.HiddenShellActions.Remove(row.Key); }
         return config;
     }
@@ -244,6 +249,12 @@ public partial class MainWindow : Window
         _app.CancelPreview(); RefreshSettings(); SaveStatus.Text = "未保存的修改已撤销，当前显示已保存的设置。";
     }
     private void MoveUp_Click(object sender, RoutedEventArgs e) => Move(-1);
+    private void EditBuiltinRule_Click(object sender, RoutedEventArgs e)
+    {
+        if (BuiltinGrid.SelectedItem is not ActionRow row) { SaveStatus.Text = "请先选择一个内置动作。"; return; }
+        var dialog = new ActionRuleWindow(row.Title, row.Rule, row.Group, _app.LastContext, row.CanPin) { Owner = this };
+        if (dialog.ShowDialog() == true) { row.Rule = dialog.Result; row.Group = dialog.Group; BuiltinGrid.Items.Refresh(); SaveStatus.Text = "场景与分组已更新，保存设置后生效。"; }
+    }
     private void MoveDown_Click(object sender, RoutedEventArgs e) => Move(1);
     private void Move(int direction) { if (BuiltinGrid.SelectedItem is ActionRow row) { int current = _actions.IndexOf(row), target = current + direction; if (target >= 0 && target < _actions.Count) { _actions.Move(current, target); BuiltinGrid.SelectedItem = row; } } }
     private void MoveCustomUp_Click(object sender, RoutedEventArgs e) => MoveCustom(-1);

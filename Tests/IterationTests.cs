@@ -28,6 +28,9 @@ public sealed class IterationTests
                 var type when type == typeof(HashSet<string>) => new HashSet<string>(["non-default-" + property.Name], StringComparer.OrdinalIgnoreCase),
                 var type when type == typeof(List<ActionPreference>) => new List<ActionPreference> { new() },
                 var type when type == typeof(List<CustomActionItem>) => new List<CustomActionItem> { new() },
+                var type when type == typeof(List<FavoriteDestination>) => new List<FavoriteDestination> { new() },
+                var type when type == typeof(List<MenuProfile>) => new List<MenuProfile> { new() },
+                var type when type == typeof(ActionRule) => new ActionRule { Target = "non-default", NamePattern = "test*", MinimumCount = 17 },
                 _ => throw new NotSupportedException("Add a non-default clone fixture for " + property.DeclaringType!.Name + "." + property.Name)
             };
             if (next is System.Collections.IEnumerable sequence && next is not string)

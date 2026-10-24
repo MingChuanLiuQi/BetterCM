@@ -52,15 +52,15 @@ internal static class ShellOperationChecks
             File.WriteAllText(Path.Combine(root, "paste-menu.json"), System.Text.Json.JsonSerializer.Serialize(new { pasteMenu, Formats = System.Windows.Clipboard.GetDataObject()?.GetFormats() }));
             await executor.ExecuteAsync("paste", Background(copied), existingShell: pasteMenu);
             string copy = Path.Combine(copied, Path.GetFileName(file));
-            await WaitForAsync(() => File.Exists(copy));
-            check(new CheckIdentity("ShellOperation/C004", "真实 Shell 复制粘贴保留源文件并生成相同内容"), File.Exists(file) && File.Exists(copy) && await File.ReadAllTextAsync(file) == await File.ReadAllTextAsync(copy), null);
+            string copiedContent = await ReadCompletedAsync(copy, "BetterCM Shell transfer fixture");
+            check(new CheckIdentity("ShellOperation/C004", "真实 Shell 复制粘贴保留源文件并生成相同内容"), File.Exists(file) && File.Exists(copy) && await File.ReadAllTextAsync(file) == copiedContent, null);
             await executor.ExecuteAsync("cut", Item(copy));
             // Give the isolated clipboard producer time to exit; paste must still work.
             await Task.Delay(900);
             await executor.ExecuteAsync("paste", Background(moved));
             string destination = Path.Combine(moved, Path.GetFileName(file));
-            await WaitForAsync(() => File.Exists(destination) && !File.Exists(copy));
-            check(new CheckIdentity("ShellOperation/C003", "真实 Shell 剪切后跨进程粘贴移动文件且移除源项"), File.Exists(destination) && !File.Exists(copy) && await File.ReadAllTextAsync(destination) == await File.ReadAllTextAsync(file), null);
+            string movedContent = await ReadCompletedAsync(destination, "BetterCM Shell transfer fixture", copy);
+            check(new CheckIdentity("ShellOperation/C003", "真实 Shell 剪切后跨进程粘贴移动文件且移除源项"), File.Exists(destination) && !File.Exists(copy) && movedContent == await File.ReadAllTextAsync(file), null);
             var bin = await bridge.OpenAsync(new() { ShellParsingPaths = ["::{645FF040-5081-101B-9F08-00AA002F954E}"], DisplayName = "回收站" });
             check(new CheckIdentity("ShellOperation/C002", "回收站命名空间菜单可读取并保持原始命令身份"), bin.Success && bin.Items?.Count > 0 && bin.Items.Select(x => x.Command).Distinct().Count() == bin.Items.Count, bin.Error);
             File.WriteAllText(Path.Combine(root, "recycle-menu.json"), System.Text.Json.JsonSerializer.Serialize(bin));
@@ -71,8 +71,19 @@ internal static class ShellOperationChecks
             System.Windows.Clipboard.SetDataObject(previous, true);
         }
     }
-    private static async Task WaitForAsync(Func<bool> complete)
+    internal static async Task<string> ReadCompletedAsync(string path, string expected, string? removedSource = null)
     {
-        for (int i = 0; i < 100 && !complete(); i++) await Task.Delay(50);
+        for (int i = 0; i < 100; i++)
+        {
+            try
+            {
+                string content = await File.ReadAllTextAsync(path);
+                if (content == expected && (removedSource == null || !File.Exists(removedSource))) return content;
+            }
+            catch (FileNotFoundException) { }
+            catch (IOException ex) when ((ex.HResult & 0xFFFF) is 32 or 33) { /* Shell may still own the newly created destination. */ }
+            await Task.Delay(50);
+        }
+        throw new TimeoutException("Windows 文件传输未在五秒内产生可读取的完整目标：" + path);
     }
 }

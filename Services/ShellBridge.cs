@@ -6,8 +6,8 @@ using System.Windows.Threading;
 using BetterCM.Models;
 namespace BetterCM.Services;
 
-public sealed record ShellRequest(string Kind, string[]? Paths = null, long Owner = 0, string? Session = null, int Command = -1, bool Background = false, string? RequestId = null, string ViewPath = "", bool PinnedNavigation = false, bool DeferSubmenus = false);
-public sealed record ShellResponse(bool Success, string? Error = null, string? Session = null, IReadOnlyList<ShellItem>? Items = null, string? RequestId = null, IReadOnlyList<ShellMenuNode>? Menu = null, ShellBuildTimings? BuildTimings = null, bool Superseded = false);
+public sealed record ShellRequest(string Kind, string[]? Paths = null, long Owner = 0, string? Session = null, int Command = -1, bool Background = false, string? RequestId = null, string ViewPath = "", bool PinnedNavigation = false, bool DeferSubmenus = false, string Destination = "", bool DateSubfolder = false);
+public sealed record ShellResponse(bool Success, string? Error = null, string? Session = null, IReadOnlyList<ShellItem>? Items = null, string? RequestId = null, IReadOnlyList<ShellMenuNode>? Menu = null, ShellBuildTimings? BuildTimings = null, bool Superseded = false, bool Aborted = false);
 public sealed class ShellBridge : IDisposable
 {
     private readonly object _sync = new();
@@ -34,6 +34,17 @@ public sealed class ShellBridge : IDisposable
     {
         using var connection = NewConnection();
         return await connection.SendAsync(new("refresh", context.ShellTargets.ToArray(), (long)context.SourceWindow));
+    }
+    public async Task<ShellResponse> TransferAsync(SelectedContext context, Config.FavoriteDestination favorite, bool move)
+    {
+        ShellConnection connection;
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            connection = NewConnection(); connection.InvocationReserved = true; _invocations.Add(connection);
+        }
+        try { return await connection.SendAsync(new(move ? "move-to" : "copy-to", context.TargetPaths.ToArray(), (long)context.SourceWindow, Destination: favorite.Path, DateSubfolder: favorite.DateSubfolder)); }
+        finally { lock (_sync) _invocations.Remove(connection); connection.Dispose(); }
     }
     public async Task<ShellResponse> OpenAsync(SelectedContext ctx, CancellationToken cancellation = default, bool deferSubmenus = false)
     {
@@ -169,17 +180,17 @@ public sealed class ShellBridge : IDisposable
                 Interlocked.Increment(ref _busy);
             }
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _lifetime.Token);
-            deadline.CancelAfter(request.Kind == "invoke" ? invokeTimeout : TimeSpan.FromSeconds(6));
+            deadline.CancelAfter(request.Kind is "invoke" or "copy-to" or "move-to" ? invokeTimeout : TimeSpan.FromSeconds(6));
             try
             {
                 await _gate.WaitAsync(deadline.Token); acquired = true;
                 await EnsureStartedAsync().WaitAsync(deadline.Token);
                 // Startup stays bounded independently. A full enhanced tree may
                 // legitimately need longer than a deferred classic root menu.
-                deadline.CancelAfter(request.Kind == "invoke" ? invokeTimeout : request.Kind == "open" && !request.DeferSubmenus ? TimeSpan.FromSeconds(20) : TimeSpan.FromSeconds(6));
+                deadline.CancelAfter(request.Kind is "invoke" or "copy-to" or "move-to" ? invokeTimeout : request.Kind == "open" && !request.DeferSubmenus ? TimeSpan.FromSeconds(20) : TimeSpan.FromSeconds(6));
                 var id = Guid.NewGuid().ToString("N"); request = request with { RequestId = id };
                 // From this point a verb may be executing: every failure only closes IPC, never kills the host or its children.
-                if (request.Kind == "invoke")
+                if (request.Kind is "invoke" or "copy-to" or "move-to")
                 {
                     _invokeSent = true;
                     if (_process != null) NativeMethods.AllowSetForegroundWindow((uint)_process.Id);
@@ -195,7 +206,7 @@ public sealed class ShellBridge : IDisposable
                 bool expectedCancellation = cancellation.IsCancellationRequested || _lifetime.IsCancellationRequested;
                 Dispose();
                 if (!expectedCancellation) AppLog.Write("shell-transport", ex);
-                return new(false, request.Kind == "invoke" ? "未收到系统动作的完成结果，连接已结束；动作可能仍由 Windows 继续执行。请先确认结果后再重试。" : "系统项目读取失败，可重试或使用 Shift+右键：" + ex.Message);
+                return new(false, request.Kind is "invoke" or "copy-to" or "move-to" ? "未收到系统动作的完成结果，连接已结束；动作可能仍由 Windows 继续执行。请先确认结果后再重试。" : "系统项目读取失败，可重试或使用 Shift+右键：" + ex.Message);
             }
             finally
             {
@@ -262,6 +273,12 @@ public static class ShellHost
                         else
 #endif
                         {
+                            if (request.Kind is "copy-to" or "move-to")
+                            {
+                                invoked = true;
+                                FavoriteTransfer.RunInHost(request.Paths ?? [], request.Destination, request.DateSubfolder, request.Kind == "move-to", (nint)request.Owner);
+                                return new ShellResponse(true);
+                            }
                             if (request.Kind == "refresh")
                             {
                                 using var view = ShellViewBinding.Open((nint)request.Owner, request.Paths?.FirstOrDefault() ?? "");
@@ -274,6 +291,7 @@ public static class ShellHost
                         }
                         return new ShellResponse(false, "菜单上下文已改变，请重新呼出后执行");
                     }
+                    catch (OperationCanceledException ex) { return new ShellResponse(false, ex.Message, Aborted: true); }
                     catch (Exception ex) { AppLog.Write("shell-command", ex); return new ShellResponse(false, ex.Message + $" (0x{ex.HResult:X8})"); }
                 });
                 await writer.WriteLineAsync(JsonSerializer.Serialize(response with { RequestId = request.RequestId })); await writer.FlushAsync();

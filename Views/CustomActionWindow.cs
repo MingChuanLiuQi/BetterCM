@@ -18,6 +18,7 @@ public sealed class CustomActionWindow : Window
     private readonly TextBlock _templateHint = new() { TextWrapping = TextWrapping.Wrap };
     private readonly SelectedContext? _recentContext;
     private bool _previewReady;
+    private readonly ActionRuleEditor _rules;
     public CustomActionItem Result { get; private set; }
     public CustomActionWindow(CustomActionItem original, SelectedContext? recentContext = null)
     {
@@ -94,6 +95,8 @@ public sealed class CustomActionWindow : Window
         panel.Children.Add(_targetDirectory);
         Hint("默认在程序所在目录运行。只有程序确实需要时才勾选此项；目标文件夹中的 DLL 或插件可能被该程序加载。{dir} 参数仍始终表示目标所在目录。");
         panel.Children.Add(_admin); panel.Children.Add(_primary);
+        _rules = new(Result.Rule, Result.Group, _recentContext);
+        panel.Children.Add(new Expander { Header = "场景规则与菜单分组", Content = _rules, Margin = new Thickness(0, 14, 0, 0) });
         _previewChoice.Items.Add("示例：一个文件"); _previewChoice.Items.Add("示例：两个含空格的文件"); _previewChoice.Items.Add("示例：一个文件夹");
         if (_recentContext?.HasFileTarget == true) _previewChoice.Items.Add("最近一次右键选区");
         _previewChoice.SelectedIndex = 0;
@@ -150,7 +153,9 @@ public sealed class CustomActionWindow : Window
         SelectionMode = ((_mode.SelectedItem as ComboBoxItem)?.Tag as string) ?? "single",
         RunAsAdmin = _admin.IsChecked == true,
         IsPrimary = _primary.IsChecked == true,
-        UseTargetWorkingDirectory = _targetDirectory.IsChecked == true
+        UseTargetWorkingDirectory = _targetDirectory.IsChecked == true,
+        Rule = _rules.ReadRule(),
+        Group = _rules.Group
     };
     internal void ApplyTemplate(string id)
     {

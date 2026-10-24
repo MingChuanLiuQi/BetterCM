@@ -36,6 +36,25 @@ public static class ConfigMigrations
                         }
                     version = 2;
                     break;
+                case 2:
+                    // New rules are unrestricted; existing actions keep their visibility and ordering.
+                    if (config.CustomActions != null)
+                    {
+                        var occupied = config.CustomActions.Where(x => x != null).Select(x => x.Id).ToHashSet(StringComparer.Ordinal);
+                        for (int index = 0; index < config.CustomActions.Count; index++)
+                        {
+                            var action = config.CustomActions[index];
+                            if (action == null || action.Id == null || action.Id != "batch-rename" && !action.Id.StartsWith("favorite:", StringComparison.Ordinal)) continue;
+                            string originalId = action.Id; int salt = 0; string replacement;
+                            do
+                            {
+                                replacement = "migrated-" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"BetterCM.Schema3:{originalId}:{index}:{salt++}")))[..24];
+                            } while (!occupied.Add(replacement));
+                            action.Id = replacement;
+                        }
+                    }
+                    version = 3;
+                    break;
                 default: throw new InvalidDataException("缺少配置迁移步骤");
             }
         }
