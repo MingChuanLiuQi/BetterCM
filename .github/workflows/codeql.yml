@@ -31,4 +31,4 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Locked restore failed.' }
           dotnet build BetterCM.csproj -c Release --no-restore --nologo
           if ($LASTEXITCODE -ne 0) { throw 'CodeQL build failed.' }
-      - uses: github/codeql-action/analyze@f051dc808ef3645eb0d08647ec751634ec2304ac # v4
+      - uses: github/codeql-action/analyze@0911ee96d2d6c8def97122c36c5cadd93829a4b4 # v4
